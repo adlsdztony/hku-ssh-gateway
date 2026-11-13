@@ -1,30 +1,27 @@
-`hku` packages an isolated HKU VPN SSH/TCP gateway into a Rust CLI.
+## Changes
 
-- Single-binary Linux installation for amd64 and arm64; no Rust toolchain required.
-- Windows x64 client: `hku ssh -s SERVER user@internal-host`, without Docker.
-- Local `hku ssh user@host` and normal local SSH config/key/agent support.
-- Embedded Docker runtime, typed TOML configuration and interactive MFA with automatic return after connection.
-- No public-key registration or extra authentication layer; reuse normal host SSH authentication.
-- Local deployment or ordinary SSH to a remote host; Tailscale is optional.
-- Any VPN-reachable TCP destination by default, with optional restrictions.
-- Configurable TCP keepalive, service supervision and VPN-only forwarding rules.
-- SHA-256 verified Bash installer; supports pinned versions and custom install directories.
-- SHA-256 verified Windows PowerShell installer with per-user PATH setup and an opt-out.
+- `hku connect` returns automatically once the VPN process, address and route are ready. No manual terminal detach is required after password/MFA entry.
+- Remove the tmux dependency. OpenConnect runs in Docker's persistent terminal; the CLI closes only its own attach client and restores terminal settings.
+- Keep authentication entirely inside OpenConnect: no credential-output parsing, cookie extraction or credential handoff.
+- Add terminal lifecycle coverage for automatic return while stdin stays open, surviving VPN processes, hidden input, terminal restoration, failed login and retry.
+- Keep English and Chinese quick-start documentation synchronized.
 
-Install:
+## Upgrade
+
+Reinstall the CLI on the Linux gateway:
 
 ```sh
 curl -fsSL https://github.com/adlsdztony/hku-ssh-gateway/releases/latest/download/install.sh | bash
+hku up
+hku connect
 ```
 
-Then run `hku doctor`, `hku setup --user YOUR_UID@connect.hku.hk`, and `hku connect`.
+Upgrading an older runtime recreates the container and disconnects its VPN session, so authenticate again when prompted. After login, the command returns automatically and the VPN keeps running. Existing configuration and normal local SSH keys/config remain in use.
 
-Docker Engine, Docker Compose, TUN and standard Linux tools are deployment prerequisites. Passwords and MFA codes are entered directly into OpenConnect and never stored by the CLI. Automatic probes do not override session expiration or forced reauthentication policies.
-
-Windows client installation:
+Windows client update:
 
 ```powershell
 irm https://github.com/adlsdztony/hku-ssh-gateway/releases/latest/download/install.ps1 | iex
 ```
 
-Windows client mode needs OpenSSH, not Docker.
+Assets include Linux amd64/arm64 binaries, the Windows x64 client, both installers and SHA256SUMS. The Linux gateway requires Docker Engine, Compose, TUN and standard Linux tools. Windows remote-client mode needs OpenSSH, not Docker.
