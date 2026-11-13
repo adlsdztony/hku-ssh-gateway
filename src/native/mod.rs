@@ -34,6 +34,10 @@ impl Deployment {
         );
         ensure!(self.owner > 0, "Native deployments require a non-root owner; invoke hku normally and let it request sudo");
         ensure!(
+            self.group > 0,
+            "Native deployments require a non-root primary group"
+        );
+        ensure!(
             self.config.backend == Backend::Native,
             "Not a native configuration"
         );

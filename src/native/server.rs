@@ -5,13 +5,12 @@ use std::collections::VecDeque;
 use std::fs::{self, File};
 use std::io;
 use std::net::{Shutdown, TcpStream, ToSocketAddrs};
-use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::CommandExt;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
     mpsc, Arc, Mutex,
 };
 use std::thread;
@@ -286,12 +285,12 @@ fn bridge(mut stream: UnixStream, d: &Deployment, host: &str, port: u16) -> Resu
         let _ = stream.shutdown(Shutdown::Both);
         Ok(())
     })();
-    if result.is_err() {
+    if let Err(error) = &result {
         let _ = send_json(
             &mut stream,
             &Reply {
                 ok: false,
-                message: result.as_ref().unwrap_err().to_string(),
+                message: error.to_string(),
                 ready: false,
             },
         );
@@ -329,10 +328,17 @@ fn serve(d: &Deployment, network: &network::Network) -> Result<i32> {
         signal_hook::flag::register(signal, Arc::clone(&shutdown))?;
     }
     let mut next_check = Instant::now();
+    let clients = Arc::new(AtomicUsize::new(0));
     let mut next_probe = Instant::now();
     while !shutdown.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((stream, _)) => {
+                if clients.fetch_add(1, Ordering::Relaxed) >= 64 {
+                    clients.fetch_sub(1, Ordering::Relaxed);
+                    drop(stream);
+                    continue;
+                }
+                let clients = Arc::clone(&clients);
                 let deployment = d.clone();
                 let state = Arc::clone(&shared);
                 thread::spawn(move || {
@@ -349,6 +355,7 @@ fn serve(d: &Deployment, network: &network::Network) -> Result<i32> {
                             );
                         }
                     }
+                    clients.fetch_sub(1, Ordering::Relaxed);
                 });
             }
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => (),

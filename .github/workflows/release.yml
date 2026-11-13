@@ -27,6 +27,19 @@ jobs:
       - run: bash tests/installer.sh
       - run: bash tests/smoke.sh "$PWD/target/debug/hku"
       - run: bash tests/connection.sh "$PWD/target/debug/hku"
+  native:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openconnect vpnc-scripts iproute2 iptables util-linux
+          test -c /dev/net/tun || sudo modprobe tun
+          rustup update stable
+          rustup default stable
+      - run: cargo build --locked
+      - run: bash tests/native.sh "$PWD/target/debug/hku"
   build:
     strategy:
       fail-fast: false
@@ -110,7 +123,7 @@ jobs:
           path: dist/*.tar.gz
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [quality, build, windows, macos]
+    needs: [quality, native, build, windows, macos]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

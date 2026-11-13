@@ -2,6 +2,7 @@ use super::*;
 use crate::runtime::{capture, success};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -103,8 +104,37 @@ impl Network {
         }
         let dns = bootstrap_dns(d)?;
         fs::create_dir_all(self.directory())?;
+        fs::set_permissions(self.directory(), fs::Permissions::from_mode(0o755))?;
         fs::write(self.marker(), format!("{}:{}", self.id, self.owner))?;
         fs::write(self.directory().join("resolv.conf"), &dns)?;
+        fs::set_permissions(
+            self.directory().join("resolv.conf"),
+            fs::Permissions::from_mode(0o644),
+        )?;
+        // Avoid nss-resolve reaching the host resolver through a Unix socket.
+        let nss = fs::read_to_string("/etc/nsswitch.conf")?;
+        let mut had_hosts = false;
+        let mut nss = nss
+            .lines()
+            .map(|line| {
+                if line.trim_start().starts_with("hosts:") {
+                    had_hosts = true;
+                    "hosts: files dns"
+                } else {
+                    line
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !had_hosts {
+            nss.push_str("\nhosts: files dns");
+        }
+        nss.push('\n');
+        fs::write(self.directory().join("nsswitch.conf"), nss)?;
+        fs::set_permissions(
+            self.directory().join("nsswitch.conf"),
+            fs::Permissions::from_mode(0o644),
+        )?;
         fs::write(d.directory().join("bootstrap-resolv.conf"), &dns)?;
         success(Command::new("ip").args(["netns", "add", &self.namespace]))?;
         let result = self.configure();
@@ -300,7 +330,7 @@ impl Network {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
-        for name in ["resolv.conf", "hku-owner"] {
+        for name in ["resolv.conf", "nsswitch.conf", "hku-owner"] {
             let _ = fs::remove_file(self.directory().join(name));
         }
         let _ = fs::remove_dir(self.directory());

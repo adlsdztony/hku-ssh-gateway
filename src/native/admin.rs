@@ -26,7 +26,14 @@ pub fn trusted_program(candidates: &[&str]) -> Result<PathBuf> {
     for path in candidates {
         if let Ok(canonical) = Path::new(path).canonicalize() {
             let metadata = fs::metadata(&canonical)?;
-            if metadata.is_file() && metadata.uid() == 0 && metadata.mode() & 0o022 == 0 {
+            let parents_safe = canonical.ancestors().skip(1).all(|parent| {
+                fs::metadata(parent).is_ok_and(|m| m.uid() == 0 && m.mode() & 0o022 == 0)
+            });
+            if metadata.is_file()
+                && metadata.uid() == 0
+                && metadata.mode() & 0o022 == 0
+                && parents_safe
+            {
                 return Ok(canonical);
             }
         }
@@ -43,7 +50,11 @@ pub fn vpnc_script() -> Result<PathBuf> {
     ])
 }
 pub fn openconnect() -> Result<PathBuf> {
-    trusted_program(&["/usr/sbin/openconnect", "/usr/bin/openconnect"])
+    trusted_program(&[
+        "/usr/local/sbin/openconnect",
+        "/usr/sbin/openconnect",
+        "/usr/bin/openconnect",
+    ])
 }
 
 pub fn load(id: &str) -> Result<Deployment> {
