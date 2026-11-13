@@ -32,7 +32,15 @@ Reinstall to update the CLI. Remove the installed binary to uninstall it; deploy
 
 ### Windows client
 
-Download the Windows x64 ZIP from [Releases](https://github.com/adlsdztony/hku-ssh-gateway/releases), verify it against SHA256SUMS, and put `hku.exe` on PATH. Windows needs OpenSSH but **does not need Docker** when using a remote gateway. Windows local Docker deployment is not supported in this release.
+Install from PowerShell, without administrator privileges:
+
+```powershell
+irm https://github.com/adlsdztony/hku-ssh-gateway/releases/latest/download/install.ps1 | iex
+```
+
+The script verifies the Windows x64 ZIP against SHA256SUMS, installs under `%LOCALAPPDATA%\Programs\hku`, and adds that directory to the user PATH. It also updates the current PowerShell process PATH. For custom options, download the script and run `./install.ps1 -Version v0.1.1 -InstallDir C:/Tools/hku -NoPathUpdate`. You can inspect it before execution. It never installs Docker or changes machine-wide PATH/execution policy.
+
+Alternatively, manually download the Windows x64 ZIP from [Releases](https://github.com/adlsdztony/hku-ssh-gateway/releases). Windows needs OpenSSH but **does not need Docker** when using a remote gateway. Windows local Docker deployment is not supported in this release.
 
 ## Quick SSH client
 

@@ -73,6 +73,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           cargo build --release --locked
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & ./tests/installer.ps1 -Binary (Resolve-Path target/release/hku.exe)
           $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
           if ($env:GITHUB_REF -like 'refs/tags/*' -and $env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag/version mismatch' }
           New-Item -ItemType Directory -Path dist
@@ -100,5 +101,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp install.sh dist/install.sh
-          (cd dist && sha256sum *.tar.gz *.zip install.sh > SHA256SUMS)
+          cp install.ps1 dist/install.ps1
+          (cd dist && sha256sum *.tar.gz *.zip install.sh install.ps1 > SHA256SUMS)
           gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "hku $GITHUB_REF_NAME" --notes-file docs/release-notes.md

@@ -9,6 +9,7 @@
 - Any VPN-reachable TCP destination by default, with optional restrictions.
 - Configurable TCP keepalive, service supervision and VPN-only forwarding rules.
 - SHA-256 verified Bash installer; supports pinned versions and custom install directories.
+- SHA-256 verified Windows PowerShell installer with per-user PATH setup and an opt-out.
 
 Install:
 
@@ -19,3 +20,11 @@ curl -fsSL https://github.com/adlsdztony/hku-ssh-gateway/releases/latest/downloa
 Then run `hku doctor`, `hku setup --user YOUR_UID@connect.hku.hk`, and `hku connect`.
 
 Docker Engine, Docker Compose, TUN and tmux are deployment prerequisites. Passwords and MFA codes are entered interactively and never stored. Automatic probes do not override session expiration or forced reauthentication policies.
+
+Windows client installation:
+
+```powershell
+irm https://github.com/adlsdztony/hku-ssh-gateway/releases/latest/download/install.ps1 | iex
+```
+
+Windows client mode needs OpenSSH, not Docker.

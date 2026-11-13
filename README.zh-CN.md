@@ -19,7 +19,13 @@ hku ssh -s my-gateway -- -p 2222 user@internal-server.hku.hk
 
 第一条使用本地 Linux 网关；`-s/--server` 仅作为客户端，复用宿主机 SSH 别名或 user@host。不传目标时会提示输入。目标也可以是本机 SSH 别名，如 `hku ssh -s my-gateway school-alias`。两跳均读取本机 SSH config、私钥和 agent，不复制或登记私钥；工具仅提供 ProxyCommand 来替换原有连接通道。
 
-Windows 从 [Releases](https://github.com/adlsdztony/hku-ssh-gateway/releases) 下载 x64 ZIP，核对 SHA256SUMS，将 hku.exe 放进 PATH。有 OpenSSH 即可使用 `hku ssh -s my-gateway ...`，**不需要 Docker**。本版不支持 Windows 本地 Docker 部署。
+Windows 可以在 PowerShell 一键安装，无需管理员权限：
+
+```powershell
+irm https://github.com/adlsdztony/hku-ssh-gateway/releases/latest/download/install.ps1 | iex
+```
+
+脚本校验 SHA-256，安装到 `%LOCALAPPDATA%\Programs\hku`，并更新用户 PATH 和当前 PowerShell PATH。可先下载检查；参数支持 `-Version v0.1.1 -InstallDir C:/Tools/hku -NoPathUpdate`。不会修改系统 PATH 或执行策略。也可以从 Releases 手动下载 x64 ZIP。有 OpenSSH 即可使用 `hku ssh -s my-gateway ...`，**不需要 Docker**；本版不支持 Windows 本地 Docker 部署。
 
 远端默认调用 `$HOME/.local/bin/hku`，可用 `--gateway-bin /绝对路径/hku` 和 `--remote-state-dir /网关状态目录` 改写。客户端无需本地部署配置、Docker、tmux 或 TUN。其他 SSH 参数可通过 `--` 传给本机 OpenSSH，例如 `hku ssh -s my-gateway -- -i ~/.ssh/school_key user@internal-host`。
 

@@ -1,6 +1,6 @@
 [package]
 name = "hku-gateway"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Isolated HKU VPN gateway for SSH and TCP forwarding"
 repository = "https://github.com/adlsdztony/hku-ssh-gateway"
