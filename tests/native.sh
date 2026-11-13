@@ -93,14 +93,14 @@ exit "$result"
 LOGIN
 chmod 755 "$TMP/login"
 login() {
-rm -f "$TMP/state/returned"
-{ sleep 1; printf 'fixture-password\n'; sleep 1; printf 'fixture-otp\n';
-  for attempt in {1..80}; do
-      if [[ -f $TMP/state/returned ]]; then exit 0; fi
-      sleep 0.1
-  done
-  exit 1;
-} | timeout 20 script -q -e -c "$TMP/login" /dev/null
+    rm -f "$TMP/state/returned"
+    { sleep 1; printf 'fixture-password\n'; sleep 1; printf 'fixture-otp\n';
+      for attempt in {1..80}; do
+          if [[ -f $TMP/state/returned ]]; then exit 0; fi
+          sleep 0.1
+      done
+      exit 1;
+    } | timeout 20 script -q -e -c "$TMP/login" /dev/null
 }
 login > "$TMP/login.log" 2>&1 || { cat "$TMP/login.log"; exit 1; }
 grep -q 'VPN connected. It will keep running' "$TMP/login.log"
@@ -109,11 +109,7 @@ test "$(timeout 8 "$BIN" --state-dir "$TMP/state" proxy 10.250.254.2 22 </dev/nu
 sleep 2
 hku status | grep -q 'Keepalive: ok'
 
-# Exercise the real routing script with DNS handled only by the native hook.
-sudo ip netns exec "$namespace" env reason=connect TUNDEV=tun0 VPNGATEWAY="$host_ip" \
-    INTERNAL_IP4_ADDRESS=10.250.254.1 INTERNAL_IP4_NETMASK=255.255.255.252 INTERNAL_IP4_MTU=1300 \
-    INTERNAL_IP4_DNS=10.250.254.2 \
-    "/var/lib/hku/native/$id/hku" native-internal hook --id "$id"
+# The mock invokes the real routing hook with a complete OpenConnect environment.
 sudo grep -q 'nameserver 10.250.254.2' "/etc/netns/$namespace/resolv.conf"
 cat > "$TMP/dns.py" <<'PY'
 import socket, struct
@@ -146,7 +142,7 @@ if sudo -u nobody python3 -c 'import socket,sys; s=socket.socket(socket.AF_UNIX)
 fi
 hku disconnect
 for attempt in {1..80}; do
-    if hku status 2>/dev/null | grep -q 'VPN: offline'; then break; fi
+    if (hku status 2>/dev/null || test "$?" -eq 2) | grep -q 'VPN: offline'; then break; fi
     sleep 0.1
 done
 test "$before_ns_route" = "$(sudo ip -n "$namespace" -4 route show default)"

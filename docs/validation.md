@@ -2,7 +2,7 @@
 
 ## Native Linux branch
 
-Privileged integration runs on a dedicated Ubuntu CI VM using real systemd, netns, veth and firewall rules. A mock OpenConnect reads hidden password/MFA fixture input from its terminal and establishes a simulated tunnel. Checks cover owner-only control, cross-user denial, automatic return with restored terminal settings, a persistent VPN process, successful TCP forwarding, blocked ordinary-network fallback, keepalive, DNS resolution through the tunnel, unchanged host default routing and resolver, and repeatable scoped cleanup. No school credentials or live VPN sessions are used.
+Privileged integration runs on a dedicated Ubuntu CI VM using real systemd, netns, veth and firewall rules. A mock OpenConnect reads hidden password/MFA fixture input from its terminal and establishes a simulated tunnel using the real routing hook. Checks cover owner-only control, cross-user denial, automatic return with restored terminal settings, a persistent VPN process, successful TCP forwarding, blocked ordinary-network fallback, keepalive, DNS resolution through the tunnel, unchanged host default routing and resolver, recreation of volatile runtime directories, route restoration and re-login after disconnection, and repeatable scoped cleanup. No school credentials or live VPN sessions are used.
 
 Linux amd64/arm64, Windows x64 and macOS Intel/Apple Silicon builds are covered. Windows/macOS reject gateway management and preserve remote SSH/proxy client operation without Docker. Old TOML remains Docker-backed. Native HKU password/MFA and campus reachability still require user acceptance testing; compilation and simulated integration do not prove those live results.
 

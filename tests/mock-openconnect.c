@@ -21,16 +21,19 @@ int main(int argc, char **argv) {
     signal(SIGINT, stop);
     signal(SIGTERM, stop);
     signal(SIGHUP, stop);
-    if (system("(ip link show tun0 >/dev/null 2>&1 || ip tuntap add dev tun0 mode tun) && ip address add 10.250.254.1/32 dev tun0 && ip link set tun0 up") != 0) return 13;
+    if (system("(ip link show tun0 >/dev/null 2>&1 || ip tuntap add dev tun0 mode tun) && ip link set tun0 up") != 0) return 13;
     if (native_hook) {
         setenv("reason", "connect", 1);
         setenv("TUNDEV", "tun0", 1);
         setenv("VPNGATEWAY", "192.0.2.1", 1);
         setenv("INTERNAL_IP4_ADDRESS", "10.250.254.1", 1);
         setenv("INTERNAL_IP4_NETMASK", "255.255.255.255", 1);
+        setenv("INTERNAL_IP4_NETMASKLEN", "32", 1);
+        setenv("INTERNAL_IP4_NETADDR", "10.250.254.1", 1);
         setenv("INTERNAL_IP4_MTU", "1300", 1);
+        setenv("INTERNAL_IP4_DNS", "10.250.254.2", 1);
         if (system(native_hook) != 0) return 15;
-    } else if (system("ip route replace default dev tun0") != 0) return 13;
+    } else if (system("ip address add 10.250.254.1/32 dev tun0 && ip route replace default dev tun0") != 0) return 13;
     puts("Test tunnel configured.");
     fflush(stdout);
     while (!stopping) pause();
