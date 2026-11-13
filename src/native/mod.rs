@@ -231,8 +231,12 @@ pub fn doctor() -> Result<bool> {
         println!("{} {program}", if found { "OK" } else { "MISSING" });
         ok &= found;
     }
-    let script = admin::vpnc_script().is_ok();
+    let script_result = admin::vpnc_script();
+    let script = script_result.is_ok();
     println!("{} vpnc-script", if script { "OK" } else { "MISSING" });
+    if let Err(error) = script_result {
+        println!("{error:#}");
+    }
     ok &= script;
     let systemd = std::path::Path::new("/run/systemd/system").is_dir();
     println!(

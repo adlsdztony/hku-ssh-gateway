@@ -35,6 +35,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y openconnect vpnc-scripts iproute2 iptables util-linux
+          dpkg -L vpnc-scripts
+          ls -ld / /usr /usr/share /usr/share/vpnc-scripts || true
           test -c /dev/net/tun || sudo modprobe tun
           rustup update stable
           rustup default stable

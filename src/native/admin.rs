@@ -23,6 +23,7 @@ fn secure_directory(path: &Path, mode: u32) -> Result<()> {
 }
 
 pub fn trusted_program(candidates: &[&str]) -> Result<PathBuf> {
+    let mut reasons = Vec::new();
     for path in candidates {
         if let Ok(canonical) = Path::new(path).canonicalize() {
             let metadata = fs::metadata(&canonical)?;
@@ -36,11 +37,18 @@ pub fn trusted_program(candidates: &[&str]) -> Result<PathBuf> {
             {
                 return Ok(canonical);
             }
+            reasons.push(format!(
+                "{} uid={} mode={:o} parents_safe={parents_safe}",
+                canonical.display(),
+                metadata.uid(),
+                metadata.mode()
+            ));
         }
     }
     anyhow::bail!(
-        "Install a root-owned program at one of: {}",
-        candidates.join(", ")
+        "Install a root-owned program at one of: {} ({})",
+        candidates.join(", "),
+        reasons.join("; ")
     )
 }
 pub fn vpnc_script() -> Result<PathBuf> {

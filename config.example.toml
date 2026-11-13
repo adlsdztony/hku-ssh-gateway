@@ -1,3 +1,4 @@
+backend = "native"
 vpn_user = "YOUR_UID@connect.hku.hk"
 vpn_server = "vpn2fa.hku.hk"
 vpn_useragent = "AnyConnect"
@@ -10,3 +11,9 @@ host = "gpu3gate1.cs.hku.hk"
 port = 22
 interval = 300
 timeout = 5
+
+[native]
+# Optional private /30 network; otherwise an instance-specific subnet is used.
+# subnet = "10.253.0.0/30"
+# Optional non-loopback IPv4 DNS servers for reaching the VPN before login.
+# bootstrap_dns = ["192.168.1.1"]
