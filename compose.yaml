@@ -1,0 +1,28 @@
+services:
+  vpn:
+    build: .
+    restart: unless-stopped
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun:/dev/net/tun]
+    environment:
+      VPN_SERVER: ${VPN_SERVER:-vpn2fa.hku.hk}
+      VPN_USER: ${VPN_USER:?Run hku setup first}
+      VPN_USERAGENT: ${VPN_USERAGENT:-AnyConnect}
+      SSH_ALLOWED_TARGETS: ${SSH_ALLOWED_TARGETS:-any}
+      KEEPALIVE_ENABLED: ${KEEPALIVE_ENABLED:-true}
+      KEEPALIVE_HOST: ${KEEPALIVE_HOST:-gpu3gate1.cs.hku.hk}
+      KEEPALIVE_PORT: ${KEEPALIVE_PORT:-22}
+      KEEPALIVE_INTERVAL: ${KEEPALIVE_INTERVAL:-300}
+      KEEPALIVE_TIMEOUT: ${KEEPALIVE_TIMEOUT:-5}
+    mem_limit: 384m
+    cpus: 1.0
+    stop_grace_period: 20s
+    healthcheck:
+      test: [CMD, /usr/local/lib/hku/healthcheck.sh]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+    logging:
+      driver: local
+      options: {max-size: "5m", max-file: "2"}
+# No published ports: streams enter through authorized local Docker execution.

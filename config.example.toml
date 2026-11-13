@@ -1,0 +1,12 @@
+vpn_user = "YOUR_UID@connect.hku.hk"
+vpn_server = "vpn2fa.hku.hk"
+vpn_useragent = "AnyConnect"
+allowed_targets = ["any"]
+project = "hku-ssh-gateway"
+
+[keepalive]
+enabled = true
+host = "gpu3gate1.cs.hku.hk"
+port = 22
+interval = 300
+timeout = 5

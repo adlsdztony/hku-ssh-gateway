@@ -1,0 +1,9 @@
+.env
+authorized_keys
+client/
+*.tar
+*.log
+.DS_Store
+/target/
+/dist/
+/.gateway/

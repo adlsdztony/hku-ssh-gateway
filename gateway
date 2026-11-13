@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Compatibility entry point for source checkouts. Install the Rust CLI first.
+set -euo pipefail
+exec hku "$@"

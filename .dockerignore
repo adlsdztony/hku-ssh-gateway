@@ -1,0 +1,16 @@
+.git
+.env
+authorized_keys
+client
+tests
+docs
+*.tar
+*.log
+target
+dist
+src
+.github
+Cargo.*
+install.sh
+config.toml
+.gateway

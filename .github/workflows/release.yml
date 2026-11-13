@@ -1,0 +1,104 @@
+name: Build and release
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Install test prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tmux
+          test -c /dev/net/tun || sudo modprobe tun
+          rustup update stable
+          rustup default stable
+          rustup component add rustfmt clippy
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      - run: cargo build --locked
+      - run: bash tests/installer.sh
+      - run: bash tests/smoke.sh "$PWD/target/debug/hku"
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Install native static toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          rustup update stable
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+      - run: cargo test --locked --target ${{ matrix.target }}
+      - run: cargo build --locked --release --target ${{ matrix.target }}
+      - name: Package binary
+        shell: bash
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | python3 -c 'import sys,json; print(json.load(sys.stdin)["packages"][0]["version"])')
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then test "$GITHUB_REF_NAME" = "v$version"; fi
+          test "$(target/${{ matrix.target }}/release/hku --version)" = "hku $version"
+          mkdir -p dist
+          tar -czf "dist/hku-v$version-${{ matrix.target }}.tar.gz" -C target/${{ matrix.target }}/release hku
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: hku-${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Build Windows client
+        shell: pwsh
+        run: |
+          rustup update stable
+          rustup default stable
+          cargo test --locked
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          cargo build --release --locked
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
+          if ($env:GITHUB_REF -like 'refs/tags/*' -and $env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag/version mismatch' }
+          New-Item -ItemType Directory -Path dist
+          Compress-Archive -LiteralPath target/release/hku.exe -DestinationPath "dist/hku-v$version-x86_64-pc-windows-msvc.zip"
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: hku-x86_64-pc-windows-msvc
+          path: dist/*.zip
+          if-no-files-found: error
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [quality, build, windows]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: hku-*
+          merge-multiple: true
+          path: dist
+      - name: Publish verified binaries and installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp install.sh dist/install.sh
+          (cd dist && sha256sum *.tar.gz *.zip install.sh > SHA256SUMS)
+          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "hku $GITHUB_REF_NAME" --notes-file docs/release-notes.md
