@@ -325,6 +325,7 @@ fn proxy_command(runtime: &Runtime, host: String, port: u16) -> Result<i32> {
         "jump",
         "--",
         "nc",
+        "-N",
         "--",
         &host,
         &port.to_string(),
