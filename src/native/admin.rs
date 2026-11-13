@@ -22,6 +22,10 @@ fn secure_directory(path: &Path, mode: u32) -> Result<()> {
     Ok(())
 }
 
+pub fn prepare_runtime() -> Result<()> {
+    secure_directory(Path::new(RUN), 0o755)
+}
+
 pub fn trusted_program(candidates: &[&str]) -> Result<PathBuf> {
     let mut reasons = Vec::new();
     for path in candidates {

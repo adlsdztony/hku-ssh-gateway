@@ -43,6 +43,14 @@ namespace=$(printf '%s\n' "$state" | awk '/^Namespace:/ {print $2}')
 id=${namespace#hku-}
 [[ $id =~ ^[0-9a-f]{12}$ ]]
 socket="/run/hku-native/$id.sock"
+# A reboot clears /run, including the socket parent created by the installer.
+sudo systemctl stop "hku-native-$id.service"
+sudo rmdir /run/hku-native
+sudo systemctl start "hku-native-$id.service"
+for attempt in {1..80}; do
+    if hku status >/dev/null 2>&1 || [[ $? == 2 ]]; then break; fi
+    sleep 0.1
+done
 test "$(stat -c %a "$socket")" = 600
 test "$(stat -c %u "$socket")" = "$(id -u)"
 test "$(stat -c %u "/var/lib/hku/native")" = 0

@@ -302,6 +302,8 @@ fn bridge(mut stream: UnixStream, d: &Deployment, host: &str, port: u16) -> Resu
 
 pub fn run(d: Deployment) -> Result<i32> {
     d.validate()?;
+    // /run is volatile. Recreate the root-owned socket directory after reboot.
+    admin::prepare_runtime()?;
     let network = network::Network::new(&d)?;
     network.create(&d)?;
     let result = serve(&d, &network);
