@@ -15,7 +15,7 @@ jobs:
       - name: Install test prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y tmux
+          sudo apt-get install -y util-linux
           test -c /dev/net/tun || sudo modprobe tun
           rustup update stable
           rustup default stable
@@ -26,6 +26,7 @@ jobs:
       - run: cargo build --locked
       - run: bash tests/installer.sh
       - run: bash tests/smoke.sh "$PWD/target/debug/hku"
+      - run: bash tests/connection.sh "$PWD/target/debug/hku"
   build:
     strategy:
       fail-fast: false

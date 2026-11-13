@@ -1,4 +1,5 @@
 mod config;
+mod connection;
 mod runtime;
 #[cfg(windows)]
 mod windows_job;
@@ -37,7 +38,7 @@ enum Action {
     Doctor,
     /// Build/start using config.toml; container recreation requires new MFA
     Up,
-    /// Attach the persistent VPN console; Ctrl-B then D detaches
+    /// Log in interactively and return automatically when the VPN is ready
     #[command(alias = "login")]
     Connect,
     /// Show VPN and keepalive state (exit 2 if the VPN is offline)
@@ -47,7 +48,7 @@ enum Action {
     Disconnect,
     /// Stop and remove the deployment containers
     Down,
-    /// Show service logs, excluding the authentication console
+    /// Show recent service logs
     Logs,
     /// Print config.toml, or just its path
     Config {
@@ -177,7 +178,7 @@ fn doctor() -> Result<bool> {
     for (program, args) in [
         ("docker", vec!["info"]),
         ("docker", vec!["compose", "version"]),
-        ("tmux", vec!["-V"]),
+        ("stty", vec!["--version"]),
     ] {
         let found = Command::new(program)
             .args(&args)
@@ -258,57 +259,6 @@ fn execute(mut command: Command) -> Result<i32> {
         Ok(command.status()?.code().unwrap_or(1))
     }
 }
-fn connect(runtime: &Runtime) -> Result<i32> {
-    ensure!(
-        io::stdin().is_terminal() && io::stdout().is_terminal(),
-        "Use an interactive terminal (remote: ssh -t SERVER /path/to/hku connect)"
-    );
-    let id = runtime.container()?;
-    let session = format!("hku-vpn-{}", &id[..12]);
-    let exists = Command::new("tmux")
-        .args(["has-session", "-t", &session])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()?
-        .success();
-    if !exists {
-        let running = Command::new("docker")
-            .args(["exec", &id, "pgrep", "-x", "openconnect"])
-            .stdout(Stdio::null())
-            .status()?
-            .success();
-        ensure!(
-            !running,
-            "VPN is running outside this console; check status, or disconnect first"
-        );
-        success(Command::new("tmux").args([
-            "new-session",
-            "-d",
-            "-s",
-            &session,
-            &format!("docker exec -it {id} /usr/local/lib/hku/console.sh"),
-        ]))?;
-        success(Command::new("tmux").args(["set-option", "-t", &session, "history-limit", "0"]))?;
-    }
-    let mut command = Command::new("tmux");
-    if matches!(
-        std::env::var("TERM").unwrap_or_default().as_str(),
-        "" | "dumb" | "unknown"
-    ) {
-        command.env("TERM", "xterm-256color");
-    }
-    command.args([
-        if std::env::var_os("TMUX").is_some() {
-            "switch-client"
-        } else {
-            "attach-session"
-        },
-        "-t",
-        &session,
-    ]);
-    execute(command)
-}
-
 // OpenSSH substitutes %h/%p before a shell parses ProxyCommand. Restrict the
 // generated host pattern and also revalidate destination arguments in `proxy`.
 fn proxy_command(runtime: &Runtime, host: String, port: u16) -> Result<i32> {
@@ -585,7 +535,7 @@ fn run(cli: Cli) -> Result<i32> {
     runtime.sync()?;
     let status = match cli.command {
         Action::Up => { ensure!(doctor()?, "Missing host prerequisites"); runtime.run(&["up", "-d", "--build", "--wait", "--wait-timeout", "90"])? }
-        Action::Connect => return connect(&runtime),
+        Action::Connect => return connection::connect(&runtime),
         Action::Status => { success(runtime.compose().arg("ps"))?; runtime.run(&["exec", "-T", "vpn", "/usr/local/lib/hku/status.sh"])? }
         Action::Disconnect => runtime.run(&["exec", "-T", "vpn", "sh", "-c", "if pgrep -x openconnect >/dev/null; then pkill -INT -x openconnect; else echo 'VPN is already offline.'; fi"] )?,
         Action::Down => runtime.run(&["down"] )?,

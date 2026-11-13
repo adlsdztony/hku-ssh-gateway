@@ -6,7 +6,7 @@ There is no SSH daemon, key registration, password database or published proxy p
 
 The proxy executes netcat as a restricted container UID. IPv4/IPv6 OUTPUT rules permit that UID's sockets only through tun0 or loopback. No general established-connection exception permits fallback after tunnel loss. Optional destination restrictions are convenience CLI policy, not a security boundary against a Docker administrator.
 
-OpenConnect runs in the foreground inside a host tmux session and interactive Docker exec. This avoids terminal closure during OpenConnect 8.20 background initialization. Credentials are entered directly into OpenConnect and are not intercepted by the CLI. The AnyConnect user agent selects HKU XML POST MFA; normal TLS verification remains enabled.
+OpenConnect runs in the container's persistent Docker terminal with stdin kept open. The CLI attaches for interactive login, checks only process/interface/route readiness, and stops its own attach client automatically after connection. It restores the user's terminal settings before returning. There is no tmux dependency, authentication-output parsing, cookie extraction or credential handoff. OpenConnect handles credentials directly. The AnyConnect user agent selects HKU XML POST MFA; normal TLS verification remains enabled.
 
 The supervised TCP keepalive waits for a configured VPN interface, resolves its independent target, validates the route, and connects as the restricted user. It records result times and state transitions. It addresses application idle accounting, not hard session lifetime or compulsory reauthentication. Restarting the container restores the background service but still requires interactive VPN login.
 

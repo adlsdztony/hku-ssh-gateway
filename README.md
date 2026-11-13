@@ -26,7 +26,7 @@ Both installers verify SHA-256 and need no administrator privileges. Rerun to up
 
 ## Setup
 
-Run this **on the Linux gateway**, which needs Docker Engine with Compose, TUN and tmux. The gateway can be your local Linux machine or a server accessible through ordinary SSH. For a remote gateway, install `hku` on both the gateway and your client; only the gateway needs Docker.
+Run this **on the Linux gateway**, which needs Docker Engine with Compose, TUN and standard Linux tools. The gateway can be your local Linux machine or a server accessible through ordinary SSH. For a remote gateway, install `hku` on both the gateway and your client; only the gateway needs Docker.
 
 ```sh
 hku doctor
@@ -34,7 +34,7 @@ hku setup --user YOUR_UID@connect.hku.hk
 hku connect
 ```
 
-Enter your HKU password and Microsoft MFA code when prompted. Once connected, press **Ctrl-B, then D** to detach and keep the VPN running. `Ctrl-C` disconnects it. Passwords and MFA codes are not stored.
+Press Enter to start, then enter your HKU password and Microsoft MFA code when prompted. **The command returns automatically when the VPN is ready**, and the VPN keeps running in Docker. No manual detach or tmux is needed. Passwords and MFA codes are not stored.
 
 ## Quick SSH Client (recommended)
 
