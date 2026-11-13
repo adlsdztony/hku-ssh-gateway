@@ -3,7 +3,7 @@
 - Single-binary Linux installation for amd64 and arm64; no Rust toolchain required.
 - Windows x64 client: `hku ssh -s SERVER user@internal-host`, without Docker.
 - Local `hku ssh user@host` and normal local SSH config/key/agent support.
-- Embedded Docker runtime, typed TOML configuration and interactive MFA in a persistent console.
+- Embedded Docker runtime, typed TOML configuration and interactive MFA with automatic return after connection.
 - No public-key registration or extra authentication layer; reuse normal host SSH authentication.
 - Local deployment or ordinary SSH to a remote host; Tailscale is optional.
 - Any VPN-reachable TCP destination by default, with optional restrictions.
@@ -19,7 +19,7 @@ curl -fsSL https://github.com/adlsdztony/hku-ssh-gateway/releases/latest/downloa
 
 Then run `hku doctor`, `hku setup --user YOUR_UID@connect.hku.hk`, and `hku connect`.
 
-Docker Engine, Docker Compose, TUN and tmux are deployment prerequisites. Passwords and MFA codes are entered interactively and never stored. Automatic probes do not override session expiration or forced reauthentication policies.
+Docker Engine, Docker Compose, TUN and standard Linux tools are deployment prerequisites. Passwords and MFA codes are entered directly into OpenConnect and never stored by the CLI. Automatic probes do not override session expiration or forced reauthentication policies.
 
 Windows client installation:
 
