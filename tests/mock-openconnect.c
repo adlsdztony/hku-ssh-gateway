@@ -19,6 +19,6 @@ int main(void) {
     puts("Test tunnel configured.");
     fflush(stdout);
     while (!stopping) pause();
-    (void)system("ip link delete tun0");
-    return 0;
+    int cleanup_result = system("ip link delete tun0");
+    return cleanup_result == 0 ? 0 : 14;
 }
