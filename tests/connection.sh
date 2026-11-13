@@ -24,12 +24,21 @@ before=$(stty -g)
 result=$?
 after=$(stty -g)
 if [[ $before != "$after" ]]; then echo 'Terminal settings were not restored.' >&2; exit 90; fi
+touch "$HKU_TEST_STATE/command-returned"
 exit "$result"
 CONNECT
 chmod 755 "$TMP/run-connect"
 login() {
+    rm -f "$TMP/state/command-returned"
     # Input is supplied only after each terminal has time to display its prompt.
-    { sleep 1; printf '\n'; sleep 1; printf 'fixture-password\n'; sleep 1; printf 'fixture-otp\n'; } |
+    # Keep stdin open until the CLI returns, so EOF cannot fake auto-detachment.
+    { sleep 1; printf '\n'; sleep 1; printf 'fixture-password\n'; sleep 1; printf 'fixture-otp\n';
+      for attempt in {1..50}; do
+          if [[ -f $TMP/state/command-returned ]]; then exit 0; fi
+          sleep 0.1
+      done
+      echo 'FAIL: command required an extra input/EOF to return.' >&2; exit 1;
+    } |
         timeout 20 script -q -e -c "$TMP/run-connect" /dev/null
 }
 login > "$TMP/success.log" 2>&1 || { cat "$TMP/success.log" >&2; exit 1; }
