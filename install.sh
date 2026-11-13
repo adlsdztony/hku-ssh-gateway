@@ -20,10 +20,12 @@ while (( $# )); do
     esac
 done
 [[ $REPO =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die 'Invalid HKU_REPO.'
-[[ $(uname -s) == Linux ]] || die 'The gateway CLI currently supports Linux. Other systems can use ordinary SSH clients.'
-case $(uname -m) in
-    x86_64|amd64) TARGET=x86_64-unknown-linux-musl ;;
-    aarch64|arm64) TARGET=aarch64-unknown-linux-musl ;;
+SYSTEM=$(uname -s)
+case "$SYSTEM/$(uname -m)" in
+    Linux/x86_64|Linux/amd64) TARGET=x86_64-unknown-linux-musl ;;
+    Linux/aarch64|Linux/arm64) TARGET=aarch64-unknown-linux-musl ;;
+    Darwin/x86_64) TARGET=x86_64-apple-darwin ;;
+    Darwin/arm64) TARGET=aarch64-apple-darwin ;;
     *) die "Unsupported architecture: $(uname -m)" ;;
 esac
 for required in curl tar mktemp install; do command -v "$required" >/dev/null || die "Missing command: $required"; done
@@ -50,7 +52,7 @@ fetch "$BASE/SHA256SUMS" --output "$TMP/SHA256SUMS"
 expected=$(awk -v name="$ASSET" '$2 == name || $2 == "*"name {print $1}' "$TMP/SHA256SUMS")
 [[ $expected =~ ^[0-9a-fA-F]{64}$ ]] || die 'Release checksum is missing or ambiguous.'
 actual=$(checksum "$TMP/$ASSET")
-[[ ${actual,,} == "${expected,,}" ]] || die 'Checksum mismatch; refusing to install.'
+[[ $(printf '%s' "$actual" | tr '[:upper:]' '[:lower:]') == "$(printf '%s' "$expected" | tr '[:upper:]' '[:lower:]')" ]] || die 'Checksum mismatch; refusing to install.'
 # Extract only the expected member, never an arbitrary archive tree.
 tar -xzf "$TMP/$ASSET" -C "$TMP" hku
 [[ -f $TMP/hku && ! -L $TMP/hku ]] || die 'Release does not contain a regular hku binary.'
@@ -67,5 +69,10 @@ case ":${PATH:-}:" in
     *":$BIN_DIR:"*) ;;
     *) printf 'Add this directory to PATH: export PATH="%s:$PATH"\n' "$BIN_DIR" ;;
 esac
-printf '\nNext: hku doctor\nThen: hku setup --user YOUR_UID@connect.hku.hk\n'
-printf 'VPN authentication: hku connect (enter password and MFA interactively).\n'
+if [[ $SYSTEM == Darwin ]]; then
+    printf '\nNext: hku ssh -s YOUR_GATEWAY user@internal-host\n'
+    printf 'macOS supports remote client mode only; configure the VPN on a Linux gateway.\n'
+else
+    printf '\nNext: hku doctor\nThen: hku setup --user YOUR_UID@connect.hku.hk\n'
+    printf 'VPN authentication: hku connect (enter password and MFA interactively).\n'
+fi

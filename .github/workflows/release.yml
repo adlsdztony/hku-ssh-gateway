@@ -84,9 +84,33 @@ jobs:
           name: hku-x86_64-pc-windows-msvc
           path: dist/*.zip
           if-no-files-found: error
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: rustup update stable && rustup default stable
+      - run: cargo test --locked
+      - run: cargo build --locked --release
+      - name: Package client
+        run: |
+          version=$(target/release/hku --version | cut -d ' ' -f 2)
+          mkdir -p dist
+          tar -czf "dist/hku-v$version-${{ matrix.target }}.tar.gz" -C target/release hku
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: hku-${{ matrix.target }}
+          path: dist/*.tar.gz
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [quality, build, windows]
+    needs: [quality, build, windows, macos]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

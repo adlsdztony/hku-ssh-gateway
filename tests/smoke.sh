@@ -19,7 +19,7 @@ cleanup() {
 }
 trap cleanup EXIT
 for script in "$ROOT"/container/*.sh "$ROOT"/tests/*.sh "$ROOT/install.sh"; do bash -n "$script"; done
-hku setup --user test@example.invalid --project "$PROJECT"
+hku setup --backend docker --user test@example.invalid --project "$PROJECT"
 id=$(compose ps -q vpn)
 image=$(docker inspect --format '{{.Image}}' "$id")
 test -z "$(docker port "$id")"

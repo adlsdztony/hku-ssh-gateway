@@ -1,12 +1,14 @@
 mod config;
 mod connection;
+#[cfg(target_os = "linux")]
+mod native;
 mod runtime;
 #[cfg(windows)]
 mod windows_job;
 
 use anyhow::{bail, ensure, Context, Result};
 use clap::{Args, Parser, Subcommand};
-use config::Config;
+use config::{Backend, Config};
 use runtime::{private_write, success, Runtime};
 use std::ffi::OsString;
 use std::fs;
@@ -35,7 +37,10 @@ enum Action {
     /// Prepare config and embedded runtime without starting Docker
     Init(Setup),
     /// Check host dependencies without changing the system
-    Doctor,
+    Doctor {
+        #[arg(long)]
+        backend: Option<Backend>,
+    },
     /// Build/start using config.toml; container recreation requires new MFA
     Up,
     /// Log in interactively and return automatically when the VPN is ready
@@ -61,6 +66,9 @@ enum Action {
     Ssh(Ssh),
     /// Carry a raw TCP stream over the VPN (for SSH ProxyCommand)
     Proxy(Proxy),
+    #[cfg(target_os = "linux")]
+    #[command(hide = true, subcommand)]
+    NativeInternal(native::Internal),
 }
 
 #[derive(Args, Clone, Default)]
@@ -96,6 +104,9 @@ struct Proxy {
 
 #[derive(Args)]
 struct Setup {
+    /// Linux gateway backend (new deployments default to native)
+    #[arg(long)]
+    backend: Option<Backend>,
     #[arg(long)]
     user: Option<String>,
     #[arg(long)]
@@ -168,7 +179,31 @@ fn prompt(label: &str) -> Result<String> {
     io::stdin().read_line(&mut text)?;
     Ok(text.trim().into())
 }
-fn doctor() -> Result<bool> {
+fn doctor(backend: Option<Backend>) -> Result<bool> {
+    if !cfg!(target_os = "linux") {
+        let found = Command::new("ssh")
+            .arg("-V")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+        println!(
+            "{} OpenSSH client (this platform supports remote client mode only)",
+            if found { "OK" } else { "MISSING" }
+        );
+        return Ok(found);
+    }
+    let backend = backend.unwrap_or_else(|| {
+        Runtime::new(default_state().unwrap_or_default())
+            .and_then(|r| r.load())
+            .map(|c| c.backend)
+            .unwrap_or(Backend::Native)
+    });
+    #[cfg(target_os = "linux")]
+    if backend == Backend::Native {
+        return native::doctor();
+    }
+    let _ = backend;
     let mut ok = cfg!(target_os = "linux");
     println!(
         "{} Linux host ({})",
@@ -209,11 +244,22 @@ fn doctor() -> Result<bool> {
     Ok(ok)
 }
 fn initialize(runtime: &Runtime, options: Setup) -> Result<()> {
+    ensure!(
+        cfg!(target_os = "linux"),
+        "Gateway deployment is Linux-only. Use hku ssh -s SERVER DESTINATION in client mode"
+    );
     let mut config = if runtime.config_path().exists() {
         runtime.load()?
     } else {
         Config::default()
     };
+    if let Some(backend) = options.backend {
+        ensure!(
+            !runtime.config_path().exists() || config.backend == backend,
+            "Use a separate --state-dir to switch backends without changing an existing deployment"
+        );
+        config.backend = backend;
+    }
     if let Some(v) = options.user {
         config.vpn_user = v;
     }
@@ -267,6 +313,10 @@ fn proxy_command(runtime: &Runtime, host: String, port: u16) -> Result<i32> {
         "Invalid proxy hostname"
     );
     let config = runtime.load()?;
+    #[cfg(target_os = "linux")]
+    if config.backend == Backend::Native {
+        return native::proxy(runtime, &host, port);
+    }
     ensure!(
         config.allowed_targets == ["any"]
             || config.allowed_targets.contains(&format!("{host}:{port}")),
@@ -475,6 +525,10 @@ fn generate_client(runtime: &Runtime, options: Client) -> Result<()> {
     Ok(())
 }
 fn run(cli: Cli) -> Result<i32> {
+    #[cfg(target_os = "linux")]
+    if let Action::NativeInternal(command) = cli.command {
+        return native::internal(command);
+    }
     // Remote client commands do not read deployment config or require Docker.
     if let Action::Ssh(options) = cli.command {
         return launch_ssh(options, cli.state_dir);
@@ -484,9 +538,20 @@ fn run(cli: Cli) -> Result<i32> {
             return remote_proxy(options);
         }
     }
-    if matches!(cli.command, Action::Doctor) {
-        return Ok(if doctor()? { 0 } else { 1 });
+    if let Action::Doctor { backend } = cli.command {
+        let selected = backend.or_else(|| {
+            cli.state_dir
+                .clone()
+                .and_then(|p| Runtime::new(p).ok())
+                .and_then(|r| r.load().ok())
+                .map(|c| c.backend)
+        });
+        return Ok(if doctor(selected)? { 0 } else { 1 });
     }
+    ensure!(
+        cfg!(target_os = "linux"),
+        "Gateway management is Linux-only. Use hku ssh -s SERVER DESTINATION in client mode"
+    );
     let runtime = Runtime::new(match cli.state_dir {
         Some(p) => expand_home(p)?,
         None => default_state()?,
@@ -497,8 +562,21 @@ fn run(cli: Cli) -> Result<i32> {
             return Ok(0);
         }
         Action::Setup(options) => {
-            ensure!(doctor()?, "Missing host prerequisites");
+            ensure!(
+                cfg!(target_os = "linux"),
+                "Gateway deployment is Linux-only; use remote SSH client mode"
+            );
+            let backend = options
+                .backend
+                .unwrap_or_else(|| runtime.load().map(|c| c.backend).unwrap_or(Backend::Native));
+            ensure!(doctor(Some(backend))?, "Missing host prerequisites");
             initialize(&runtime, options)?;
+            #[cfg(target_os = "linux")]
+            if runtime.load()?.backend == Backend::Native {
+                native::up(&runtime)?;
+                println!("Gateway started. Run hku connect for password and MFA authentication.");
+                return Ok(0);
+            }
             success(runtime.compose().args([
                 "up",
                 "-d",
@@ -521,7 +599,7 @@ fn run(cli: Cli) -> Result<i32> {
             }
             return Ok(0);
         }
-        Action::Doctor => unreachable!(),
+        Action::Doctor { .. } => unreachable!(),
         _ => (),
     }
     ensure!(
@@ -532,9 +610,32 @@ fn run(cli: Cli) -> Result<i32> {
     if let Action::Proxy(options) = cli.command {
         return proxy_command(&runtime, options.host, options.port);
     }
-    runtime.sync()?;
+    let config = runtime.sync()?;
+    #[cfg(target_os = "linux")]
+    if config.backend == Backend::Native {
+        return match cli.command {
+            Action::Up => {
+                ensure!(
+                    doctor(Some(Backend::Native))?,
+                    "Missing native prerequisites"
+                );
+                native::up(&runtime)
+            }
+            Action::Connect => native::connect(&runtime),
+            Action::Status => native::status(&runtime),
+            Action::Disconnect => native::disconnect(&runtime),
+            Action::Down => native::down(&runtime),
+            Action::Logs => native::logs(&runtime),
+            Action::ClientConfig(options) => {
+                generate_client(&runtime, options)?;
+                Ok(0)
+            }
+            _ => bail!("Unsupported native operation"),
+        };
+    }
+    let _ = config;
     let status = match cli.command {
-        Action::Up => { ensure!(doctor()?, "Missing host prerequisites"); runtime.run(&["up", "-d", "--build", "--wait", "--wait-timeout", "90"])? }
+        Action::Up => { ensure!(doctor(Some(Backend::Docker))?, "Missing host prerequisites"); runtime.run(&["up", "-d", "--build", "--wait", "--wait-timeout", "90"])? }
         Action::Connect => return connection::connect(&runtime),
         Action::Status => { success(runtime.compose().arg("ps"))?; runtime.run(&["exec", "-T", "vpn", "/usr/local/lib/hku/status.sh"])? }
         Action::Disconnect => runtime.run(&["exec", "-T", "vpn", "sh", "-c", "if pgrep -x openconnect >/dev/null; then pkill -INT -x openconnect; else echo 'VPN is already offline.'; fi"] )?,
