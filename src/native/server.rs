@@ -37,7 +37,10 @@ type Shared = Arc<Mutex<Session>>;
 
 fn log(session: &mut Session, text: String) {
     session.logs.push_back(text);
-    while session.logs.len() > 100 {
+    // Leave room for JSON escaping within the control protocol's frame limit.
+    while session.logs.len() > 100
+        || session.logs.iter().map(String::len).sum::<usize>() > MAX_FRAME / 8
+    {
         session.logs.pop_front();
     }
 }
