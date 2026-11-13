@@ -3,6 +3,7 @@ use crate::runtime::{capture, success};
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr};
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -393,30 +394,35 @@ pub fn hook(d: &Deployment) -> Result<i32> {
                 .collect::<Vec<_>>()
         })
         .collect();
-    // Never let vpnc-script call the host's resolvconf/resolved through D-Bus.
-    // Route setup still runs normally inside the network namespace.
-    success(
-        Command::new(admin::vpnc_script()?)
-            .env_remove("INTERNAL_IP4_DNS")
-            .env_remove("INTERNAL_IP6_DNS"),
-    )?;
     let text = if matches!(reason.as_str(), "connect" | "reconnect") && !dns.is_empty() {
-        dns.iter()
-            .map(|ip| format!("nameserver {ip}\n"))
-            .collect::<String>()
-            + "options timeout:1 attempts:1\n"
+        Some(
+            dns.iter()
+                .map(|ip| format!("nameserver {ip}\n"))
+                .collect::<String>()
+                + "options timeout:1 attempts:1\n",
+        )
     } else if reason == "disconnect" {
-        fs::read_to_string(d.directory().join("bootstrap-resolv.conf"))?
+        Some(fs::read_to_string(
+            d.directory().join("bootstrap-resolv.conf"),
+        )?)
     } else {
-        return Ok(0);
+        None
     };
-    fs::write(
-        PathBuf::from("/etc/netns")
-            .join(d.namespace())
-            .join("resolv.conf"),
-        text,
-    )?;
-    Ok(0)
+    if let Some(text) = text {
+        fs::write(
+            PathBuf::from("/etc/netns")
+                .join(d.namespace())
+                .join("resolv.conf"),
+            text,
+        )?;
+    }
+    // Suppress host resolver integration and preserve OpenConnect's parent PID:
+    // vpnc-script uses PPID to pair route backups across connect/disconnect.
+    Err(Command::new(admin::vpnc_script()?)
+        .env_remove("INTERNAL_IP4_DNS")
+        .env_remove("INTERNAL_IP6_DNS")
+        .exec())
+    .context("Cannot execute vpnc-script")
 }
 
 #[cfg(test)]

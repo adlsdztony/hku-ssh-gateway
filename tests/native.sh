@@ -55,6 +55,7 @@ test "$(stat -c %a "$socket")" = 600
 test "$(stat -c %u "$socket")" = "$(id -u)"
 test "$(stat -c %u "/var/lib/hku/native")" = 0
 host_ip=$(ip -o -4 address show "hk$id" | awk '{split($4,a,"/"); print a[1]}')
+before_ns_route=$(sudo ip -n "$namespace" -4 route show default)
 cat > "$TMP/listen.py" <<'PY'
 import socket, sys
 s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -91,13 +92,17 @@ touch "$HKU_TEST_STATE/returned"
 exit "$result"
 LOGIN
 chmod 755 "$TMP/login"
+login() {
+rm -f "$TMP/state/returned"
 { sleep 1; printf 'fixture-password\n'; sleep 1; printf 'fixture-otp\n';
   for attempt in {1..80}; do
       if [[ -f $TMP/state/returned ]]; then exit 0; fi
       sleep 0.1
   done
   exit 1;
-} | timeout 20 script -q -e -c "$TMP/login" /dev/null > "$TMP/login.log" 2>&1 || { cat "$TMP/login.log"; exit 1; }
+} | timeout 20 script -q -e -c "$TMP/login" /dev/null
+}
+login > "$TMP/login.log" 2>&1 || { cat "$TMP/login.log"; exit 1; }
 grep -q 'VPN connected. It will keep running' "$TMP/login.log"
 if grep -qE 'fixture-password|fixture-otp' "$TMP/login.log"; then echo 'FAIL: input was echoed'; exit 1; fi
 test "$(timeout 8 "$BIN" --state-dir "$TMP/state" proxy 10.250.254.2 22 </dev/null)" = HKU_NATIVE_OK
@@ -140,10 +145,16 @@ if sudo -u nobody python3 -c 'import socket,sys; s=socket.socket(socket.AF_UNIX)
     echo 'FAIL: another user reached the native control socket' >&2; exit 1
 fi
 hku disconnect
-sleep 1
+for attempt in {1..80}; do
+    if hku status 2>/dev/null | grep -q 'VPN: offline'; then break; fi
+    sleep 0.1
+done
+test "$before_ns_route" = "$(sudo ip -n "$namespace" -4 route show default)"
 if timeout 8 "$BIN" --state-dir "$TMP/state" proxy "$host_ip" 18080 </dev/null; then
     echo 'FAIL: disconnected stream fell back to eth0' >&2; exit 1
 fi
+login > "$TMP/retry.log" 2>&1 || { cat "$TMP/retry.log"; exit 1; }
+hku status | grep -q 'VPN: connected'
 hku down
 hku down
 test ! -e "/run/netns/$namespace"

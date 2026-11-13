@@ -22,7 +22,7 @@ Forwarded sockets use an unprivileged UID whose namespace OUTPUT rules allow onl
 
 Initial DNS comes from configured `native.bootstrap_dns` or the host's non-loopback upstream IPv4 DNS. A local host stub such as 127.0.0.53 cannot be used from another namespace. If no upstream can be discovered, configure an explicit reachable DNS server.
 
-Namespace-specific `resolv.conf` and `nsswitch.conf` are bind-mounted by `ip netns exec`. The hosts NSS database uses `files dns`, preventing nss-resolve from bypassing namespace DNS through the host resolver's Unix socket. VPN DNS is applied only to the namespace file. The routing hook removes INTERNAL_IP4_DNS/INTERNAL_IP6_DNS when invoking the system vpnc-script so that it cannot update the host's DNS manager, then writes validated VPN DNS addresses to the namespace file.
+Namespace-specific `resolv.conf` and `nsswitch.conf` are bind-mounted by `ip netns exec`. The hosts NSS database uses `files dns`, preventing nss-resolve from bypassing namespace DNS through the host resolver's Unix socket. VPN DNS is applied only to the namespace file. The routing hook writes validated DNS addresses there, then replaces itself with the system vpnc-script after removing INTERNAL_IP4_DNS/INTERNAL_IP6_DNS so it cannot update the host's DNS manager. Using exec preserves the OpenConnect parent PID used to pair the script's route backups across connection and disconnection.
 
 ## Authentication and lifecycle
 
