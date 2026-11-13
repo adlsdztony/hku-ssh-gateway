@@ -34,14 +34,14 @@ struct Cli {
 enum Action {
     /// Initialize and start the gateway; run connect afterwards for VPN MFA
     Setup(Setup),
-    /// Prepare config and embedded runtime without starting Docker
+    /// Prepare configuration without starting the gateway
     Init(Setup),
     /// Check host dependencies without changing the system
     Doctor {
         #[arg(long)]
         backend: Option<Backend>,
     },
-    /// Build/start using config.toml; container recreation requires new MFA
+    /// Start using config.toml; restarting the gateway requires new MFA
     Up,
     /// Log in interactively and return automatically when the VPN is ready
     #[command(alias = "login")]
@@ -51,7 +51,7 @@ enum Action {
     /// Disconnect the VPN gracefully
     #[command(alias = "logout")]
     Disconnect,
-    /// Stop and remove the deployment containers
+    /// Stop the gateway and remove its runtime network resources
     Down,
     /// Show recent service logs
     Logs,

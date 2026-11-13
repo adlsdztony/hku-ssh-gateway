@@ -102,6 +102,28 @@ sudo ip netns exec "$namespace" env reason=connect TUNDEV=tun0 VPNGATEWAY="$host
     INTERNAL_IP4_DNS=10.250.254.2 \
     "/var/lib/hku/native/$id/hku" native-internal hook --id "$id"
 sudo grep -q 'nameserver 10.250.254.2' "/etc/netns/$namespace/resolv.conf"
+cat > "$TMP/dns.py" <<'PY'
+import socket, struct
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.bind(('10.250.254.2', 53))
+while True:
+    data, address = s.recvfrom(4096)
+    end = 12
+    labels = []
+    while data[end]:
+        length = data[end]; end += 1
+        labels.append(data[end:end + length]); end += length
+    end += 1
+    qtype, qclass = struct.unpack('!HH', data[end:end + 4]); end += 4
+    answer = b''
+    if b'.'.join(labels) == b'fixture.hku.invalid' and qtype == 1 and qclass == 1:
+        answer = b'\xc0\x0c' + struct.pack('!HHIH', 1, 1, 0, 4) + socket.inet_aton('10.250.254.2')
+    header = data[:2] + struct.pack('!HHHHH', 0x8180, 1, bool(answer), 0, 0)
+    s.sendto(header + data[12:end] + answer, address)
+PY
+sudo ip netns exec "$PEER" python3 "$TMP/dns.py" &
+sleep 0.2
+test "$(timeout 8 "$BIN" --state-dir "$TMP/state" proxy fixture.hku.invalid 22 </dev/null)" = HKU_NATIVE_OK
 test "$before_dns" = "$(sha256sum /etc/resolv.conf)"
 test "$before_route" = "$(ip -4 route show default)"
 
@@ -114,6 +136,7 @@ sleep 1
 if timeout 8 "$BIN" --state-dir "$TMP/state" proxy "$host_ip" 18080 </dev/null; then
     echo 'FAIL: disconnected stream fell back to eth0' >&2; exit 1
 fi
+hku down
 hku down
 test ! -e "/run/netns/$namespace"
 test ! -e "$socket"

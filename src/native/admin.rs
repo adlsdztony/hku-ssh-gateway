@@ -141,12 +141,12 @@ pub fn remove(id: &str) -> Result<i32> {
             "Deployment belongs to another user"
         );
     }
-    success(Command::new("systemctl").args(["disable", "--now", &d.unit()]))?;
-    network::Network::new(&d)?.destroy()?;
     let unit_path = PathBuf::from("/etc/systemd/system").join(d.unit());
     if unit_path.exists() {
+        success(Command::new("systemctl").args(["disable", "--now", &d.unit()]))?;
         fs::remove_file(unit_path)?;
     }
+    network::Network::new(&d)?.destroy()?;
     success(Command::new("systemctl").arg("daemon-reload"))?;
     println!(
         "Native gateway stopped; user configuration and root-owned installation are preserved."

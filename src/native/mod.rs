@@ -238,6 +238,14 @@ pub fn doctor() -> Result<bool> {
         println!("{error:#}");
     }
     ok &= script;
+    if let Err(error) = admin::openconnect() {
+        println!("UNSAFE openconnect: {error:#}");
+        ok = false;
+    }
+    use std::os::unix::fs::FileTypeExt;
+    let tun = std::fs::metadata("/dev/net/tun").is_ok_and(|m| m.file_type().is_char_device());
+    println!("{} /dev/net/tun", if tun { "OK" } else { "MISSING" });
+    ok &= tun;
     let systemd = std::path::Path::new("/run/systemd/system").is_dir();
     println!(
         "{} systemd system manager",
