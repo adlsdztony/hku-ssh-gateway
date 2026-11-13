@@ -14,6 +14,9 @@ export PATH="/usr/local/sbin:$PATH"
 export HKU_TEST_BIN="$BIN" HKU_TEST_STATE="$TMP/state"
 hku() { "$BIN" --state-dir "$TMP/state" "$@"; }
 cleanup() {
+    if [[ $? != 0 && $id =~ ^[0-9a-f]{12}$ ]]; then
+        sudo journalctl -u "hku-native-$id.service" --no-pager -n 100 || true
+    fi
     hku down >/dev/null 2>&1 || true
     if [[ -n $host_server ]]; then kill "$host_server" 2>/dev/null || true; fi
     if [[ -n $peer_server ]]; then kill "$peer_server" 2>/dev/null || true; fi
@@ -31,7 +34,10 @@ fixture_installed=true
 before_route=$(ip -4 route show default)
 before_dns=$(sha256sum /etc/resolv.conf)
 hku setup --user test@example.invalid --vpn-server fixture.invalid --project native-test \
-    --keepalive-host 10.250.254.2 --keepalive-interval 1
+    --keepalive-host 10.250.254.2 --keepalive-interval 1 || {
+    sudo journalctl --no-pager -n 150 -u 'hku-native-*' || true
+    exit 1
+}
 state=$(hku status || test "$?" -eq 2)
 namespace=$(printf '%s\n' "$state" | awk '/^Namespace:/ {print $2}')
 id=${namespace#hku-}
