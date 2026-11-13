@@ -2,12 +2,35 @@
 set -euo pipefail
 source /usr/local/lib/hku/common.sh
 validate_config
-printf '\nHKU OpenConnect console\nAccount: %s\n' "$VPN_USER"
-printf 'After connecting: Ctrl-B, then D detaches and keeps the VPN running.\n'
-printf 'Ctrl-C disconnects the VPN. Do not share passwords, OTPs or cookies.\n\n'
-read -r -p 'Press Enter to start VPN login: ' answer || exit 0
-# Stay in the foreground. --background inside docker exec -it can lose its
-# terminal while the pre-init script is running (OpenConnect 8.20).
-exec openconnect --protocol=anyconnect --interface=tun0 \
-    --useragent="$VPN_USERAGENT" --user="$VPN_USER" \
-    --script=/usr/share/vpnc-scripts/vpnc-script "$VPN_SERVER"
+vpn_pid=
+stop() {
+    trap - TERM INT
+    if [[ -n $vpn_pid ]]; then
+        kill -INT "$vpn_pid" 2>/dev/null || true
+        wait "$vpn_pid" 2>/dev/null || true
+    fi
+    exit 0
+}
+trap stop TERM INT
+while true; do
+    printf '\nHKU VPN login. Run hku connect to authenticate.\n'
+    read -r -p 'Press Enter to start VPN login: ' || exit 0
+    unset REPLY
+    rm -f /run/hku-vpn.exit
+    printf 'Account: %s\n' "$VPN_USER"
+    # OpenConnect handles all credential prompts itself. The container keeps
+    # its terminal alive after the attach client exits; no cookie is extracted.
+    openconnect --protocol=anyconnect --interface=tun0 \
+        --useragent="$VPN_USERAGENT" --user="$VPN_USER" \
+        --script=/usr/share/vpnc-scripts/vpnc-script "$VPN_SERVER" </dev/tty &
+    vpn_pid=$!
+    printf '%s\n' "$vpn_pid" > /run/hku-openconnect.pid
+    set +e
+    wait "$vpn_pid"
+    result=$?
+    set -e
+    vpn_pid=
+    rm -f /run/hku-openconnect.pid
+    printf '%s\n' "$result" > /run/hku-vpn.exit
+    printf '\nVPN session ended (exit %s).\n' "$result"
+done

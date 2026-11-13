@@ -26,7 +26,7 @@ irm https://github.com/adlsdztony/hku-ssh-gateway/releases/latest/download/insta
 
 ## 配置网关
 
-在 **Linux 网关上**执行，需要 Docker Engine / Compose、TUN 和 tmux。网关可以是本地 Linux，也可以是通过普通 SSH 访问的服务器。使用远端网关时，两端都安装 `hku`，只有网关需要 Docker。
+在 **Linux 网关上**执行，需要 Docker Engine / Compose、TUN 和标准 Linux 工具。网关可以是本地 Linux，也可以是通过普通 SSH 访问的服务器。使用远端网关时，两端都安装 `hku`，只有网关需要 Docker。
 
 ```sh
 hku doctor
@@ -34,7 +34,7 @@ hku setup --user YOUR_UID@connect.hku.hk
 hku connect
 ```
 
-按提示输入 HKU 密码和 Microsoft MFA 验证码。连接后按 **Ctrl-B，再按 D** 脱离控制台，VPN 保持运行；`Ctrl-C` 会断开。密码和验证码不保存。
+按 Enter 开始，再按提示输入 HKU 密码和 Microsoft MFA 验证码。**VPN 就绪后命令自动返回**，VPN 继续在 Docker 后台运行，无需手动脱离或使用 tmux。密码和验证码不保存。
 
 ## 快速 SSH 连接（推荐）
 

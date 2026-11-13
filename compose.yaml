@@ -2,6 +2,8 @@ services:
   vpn:
     build: .
     restart: unless-stopped
+    stdin_open: true
+    tty: true
     cap_add: [NET_ADMIN]
     devices: [/dev/net/tun:/dev/net/tun]
     environment:

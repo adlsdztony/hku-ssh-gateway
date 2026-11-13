@@ -22,6 +22,10 @@ const ASSETS: &[(&str, &str)] = &[
         include_str!("../container/console.sh"),
     ),
     (
+        "container/connection-state.sh",
+        include_str!("../container/connection-state.sh"),
+    ),
+    (
         "container/healthcheck.sh",
         include_str!("../container/healthcheck.sh"),
     ),
