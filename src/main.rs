@@ -1,5 +1,7 @@
 mod config;
 mod runtime;
+#[cfg(windows)]
+mod windows_job;
 
 use anyhow::{bail, ensure, Context, Result};
 use clap::{Args, Parser, Subcommand};
@@ -247,8 +249,14 @@ fn execute(mut command: Command) -> Result<i32> {
         use std::os::unix::process::CommandExt;
         Err(command.exec()).context("Cannot start command")
     }
-    #[cfg(not(unix))]
-    Ok(command.status()?.code().unwrap_or(1))
+    #[cfg(windows)]
+    {
+        Ok(windows_job::run(&mut command)?.code().unwrap_or(1))
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        Ok(command.status()?.code().unwrap_or(1))
+    }
 }
 fn connect(runtime: &Runtime) -> Result<i32> {
     ensure!(
