@@ -1,5 +1,6 @@
 **
 !scripts/
+!scripts/build-runtime.sh
 !scripts/runtime/
 !scripts/runtime/**
 !tests/

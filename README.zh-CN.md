@@ -4,7 +4,7 @@
 
 通过隔离的 Linux VPN 网关访问校内服务的 Rust CLI。新部署默认使用原生网络命名空间，Docker 保留为可选后端。默认允许任意 VPN 可达的 TCP 目标。
 
-> 本分支的原生后端仍处于实验阶段，尚未发布。下面的 Release 安装脚本仍提供稳定的 Docker 版本；体验原生模式请用 `cargo build --release` 编译本分支。
+> 本分支的原生后端仍处于实验阶段，尚未发布。下面的 Release 安装脚本仍提供稳定的 Docker 版本；体验本分支请参见[源码构建与内置运行包](docs/bundled-runtime.md)。
 
 ## 安装
 
@@ -29,10 +29,10 @@ irm https://github.com/adlsdztony/hku-ssh-gateway/releases/latest/download/insta
 
 ## 配置网关
 
-在 **Linux 网关上**执行。原生模式需要 systemd、OpenConnect、vpnc-scripts、iproute2、iptables、TUN 和 sudo。Ubuntu/Debian 可安装：
+在 **Linux 网关上**执行。Linux CI/Release 二进制内置 OpenConnect、运行库和 vpnc-script，无需单独安装 VPN 软件包。宿主机需要 systemd、iproute2、iptables、TUN、sudo 和标准 shell 工具。如果 `hku doctor` 在 Ubuntu/Debian 上提示缺少网络工具：
 
 ```sh
-sudo apt-get install openconnect vpnc-scripts iproute2 iptables
+sudo apt-get install iproute2 iptables
 ```
 
 网关可以是本地 Linux，也可以是通过普通 SSH 访问的服务器。使用远端网关时，两端都安装 `hku`；Windows 和 macOS 仅作为客户端。
@@ -44,6 +44,8 @@ hku connect
 ```
 
 原生 setup 会请求 sudo，安装 root 管理的 systemd 服务，并创建独立 netns、veth 和 NAT 规则。需要时会启用宿主机 IPv4 转发，关闭时保留这个共享设置；宿主机默认路由和 DNS 保持不变。日常连接、代理和状态命令通过仅所属用户可访问的 Unix socket 工作，无需 sudo。
+
+内置文件经过校验和检查，解压到私有的版本目录。更新 `hku` 即可更新这些依赖，不会替换宿主机运行库。Windows/macOS 客户端不包含 VPN 运行包。
 
 按提示输入 HKU 密码和 Microsoft MFA 验证码。**VPN 就绪后命令自动返回**，后台服务继续运行，无需手动脱离或使用 tmux。认证仍由 OpenConnect 完成。
 

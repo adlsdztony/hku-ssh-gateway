@@ -46,6 +46,8 @@ with tarfile.open('/build/vpnc-scripts.tar.gz') as archive:
 shutil.copyfile('/build/openconnect.tar.gz', SOURCES / 'openconnect-9.12.tar.gz')
 shutil.copyfile('/build/vpnc-scripts.tar.gz', SOURCES / 'vpnc-scripts-ce9e961.tar.gz')
 shutil.copyfile('/build/build-recipe.Dockerfile', SOURCES / 'Dockerfile')
+shutil.copyfile('/build/build-runtime.sh', SOURCES / 'build-runtime.sh')
+shutil.copyfile('/build/mock-openconnect.c', SOURCES / 'mock-openconnect.c')
 shutil.copyfile(__file__, SOURCES / 'collect.py')
 
 # APK's signed package metadata records each exact upstream recipe commit.
@@ -161,6 +163,8 @@ notice = ('OpenConnect 9.12 is built from the unmodified upstream source with th
           'These components keep their upstream licenses and are not part of the Rust CLI license.\n')
 (ROOT / 'THIRD-PARTY.txt').write_text(notice)
 (SOURCES / 'README.txt').write_text(notice + '\nRebuild the runtime with scripts/runtime/Dockerfile and collect.py from the project.\n'
+    'Place Dockerfile and collect.py under scripts/runtime/, build-runtime.sh under scripts/,\n'
+    'mock-openconnect.c under tests/ and vpnc-scripts-ce9e961.tar.gz under third_party/.\n'
     'recipes/ contains the exact Alpine APKBUILDs and patches. upstream/ contains\n'
     'all fetched and checksum-verified source inputs for those recipes. Use Alpine abuild\n'
     'on the recorded architecture to rebuild the corresponding library packages.\n')

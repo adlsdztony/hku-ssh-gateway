@@ -10,6 +10,8 @@ The Rust CLI manages typed TOML configuration, a persistent MFA console and a ra
 
 The installer requests sudo to copy validated configuration and the executable into root-controlled directories and install a systemd service. The service creates a dedicated netns, veth, scoped NAT/forwarding rules and namespace-specific resolver files. The host default route and DNS are preserved; host IPv4 forwarding is enabled if needed and left enabled on shutdown.
 
+Linux CI/release builds embed a relocatable OpenConnect/musl runtime and vpnc-script. The installer verifies and extracts it into an instance-private digest directory before starting the service. The loader uses an explicit library path and TLS uses a root-owned host CA file or the bundled fallback. Source builds without a payload use host packages. Neither mode replaces system libraries. Corresponding sources and license notices accompany the runtime; see [packaging details](bundled-runtime.md).
+
 Daily control uses a Unix socket restricted to its owner, with peer-credential checks. The daemon holds OpenConnect's PTY, relaying authentication bytes without parsing prompts or extracting credentials. On readiness, the client restores its terminal and returns automatically. The service retains the PTY and VPN process. Proxy and keepalive workers enter the namespace and drop privileges before resolving destinations and opening sockets. Namespace firewall rules allow their UID only tun0 and loopback, with no fallback when the VPN disappears.
 
 This provides network isolation, not filesystem/process sandboxing of privileged OpenConnect. Full ownership, DNS and lifecycle details are in [the native backend reference](native.md).

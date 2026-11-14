@@ -6,6 +6,8 @@ Privileged integration runs on a dedicated Ubuntu CI VM using real systemd, netn
 
 Linux amd64/arm64, Windows x64 and macOS Intel/Apple Silicon builds are covered. Windows/macOS reject gateway management and preserve remote SSH/proxy client operation without Docker. Old TOML remains Docker-backed. A live native deployment has completed HKU authentication, campus DNS resolution and an SSH banner check with successful keepalive. That banner check exposed a missing binary-stream test: Rust's line-buffered stdout could stall SSH key exchange. The proxy now uses raw file descriptors, with a regression check that keeps the connection open across several binary exchanges. Full destination SSH authentication remains a separate user acceptance check.
 
+Linux bundled builds repeat the integration suite without host OpenConnect or vpnc-script. They first run the real private musl/GnuTLS client against local TLS fixtures to verify trusted-CA acceptance and untrusted-certificate rejection. An altered runtime-cache file must fail verification before the existing service stops. Both architectures retain the persistent binary-stream tests after substituting a private, matching-musl authentication fixture. CI never stores or requests real HKU credentials. Bundled HKU MFA must be verified separately from the previously working host-package deployment.
+
 ## Existing Docker implementation
 
 The original container implementation was tested with real HKU password/MFA, CSTP/DTLS, persistent tmux detachment, internal DNS and a complete destination SSH handshake from a Windows client. The destination host key matched the existing known_hosts record. Destination shell login was not verified because the test key was not authorized there.

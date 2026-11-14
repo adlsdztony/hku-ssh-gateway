@@ -16,6 +16,7 @@ COPY third_party/vpnc-scripts-ce9e961.tar.gz /build/vpnc-scripts.tar.gz
 RUN echo '0b5906377890f41c7d07e3353d2f97c8d28ed1aaf25668d5f6dc80294f241a84  /build/vpnc-scripts.tar.gz' | sha256sum -c -
 COPY scripts/runtime/collect.py /build/collect.py
 COPY scripts/runtime/Dockerfile /build/build-recipe.Dockerfile
+COPY scripts/build-runtime.sh /build/build-runtime.sh
 COPY tests/mock-openconnect.c /build/mock-openconnect.c
 RUN mkdir -p /out && cc -O2 -Wall -Wextra -Werror /build/mock-openconnect.c -o /out/mock-openconnect \
     && python3 /build/collect.py

@@ -86,7 +86,14 @@ jobs:
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: hku-${{ matrix.target }}
-          path: dist/*.tar.gz
+          path: |
+            dist/hku-v*-${{ matrix.target }}.tar.gz
+            !dist/*-runtime-sources-*.tar.gz
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: hku-runtime-sources-${{ matrix.target }}
+          path: dist/*-runtime-sources-*.tar.gz
           if-no-files-found: error
   windows:
     runs-on: windows-2025

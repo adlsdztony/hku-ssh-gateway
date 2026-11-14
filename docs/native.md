@@ -1,10 +1,10 @@
 # Native Linux backend (experimental)
 
-Build `feat/native-linux-backend` with `cargo build --release`. This backend is not included in the current stable release. Windows and macOS provide remote SSH/proxy clients only; their configuration and private keys stay on the client.
+This experimental backend is on `feat/native-linux-backend` and is not included in the current stable release. See [source build instructions](bundled-runtime.md#source-builds) to include the VPN runtime. Windows and macOS provide remote SSH/proxy clients only; their configuration and private keys stay on the client.
 
 ## Setup and ownership
 
-Run the CLI as the ordinary account that will own the gateway. `setup`, `up` and `down` invoke sudo for administrative work; do not run the whole CLI as root. Prerequisites are a systemd system manager, OpenConnect, vpnc-scripts, iproute2, iptables/ip6tables and TUN.
+Run the CLI as the ordinary account that will own the gateway. `setup`, `up` and `down` invoke sudo for administrative work; do not run the whole CLI as root. Host prerequisites are a systemd system manager, iproute2, iptables/ip6tables, TUN and standard shell utilities. Linux CI/release binaries embed OpenConnect, its loader/libraries and vpnc-script; bare source builds retain the host-package fallback. See [embedded runtime details](bundled-runtime.md).
 
 The privileged installer copies the executable and validated configuration into a root-controlled instance directory under `/var/lib/hku/native`. It installs a systemd unit named `hku-native-INSTANCE.service`. The service does not execute scripts from user-writable state directories. Dependencies and the routing script must be root-owned, with non-writable parent directories.
 

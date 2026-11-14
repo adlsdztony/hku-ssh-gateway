@@ -4,7 +4,7 @@
 
 A Rust CLI for accessing HKU internal services through an isolated Linux VPN gateway. Native network namespaces are the default for new deployments; Docker remains optional. Any VPN-reachable TCP destination is allowed by default.
 
-> The native backend is experimental on this branch and is not yet released. Release installers below still provide the stable Docker version. Build this branch with `cargo build --release` to try native mode.
+> The native backend is experimental on this branch and is not yet released. Release installers below still provide the stable Docker version. See [source builds and the embedded runtime](docs/bundled-runtime.md) to try this branch.
 
 ## Install
 
@@ -29,10 +29,10 @@ Both installers verify SHA-256 and need no administrator privileges. Rerun to up
 
 ## Setup
 
-Run this **on the Linux gateway**. Native mode needs systemd, OpenConnect, vpnc-scripts, iproute2, iptables, TUN and sudo. On Ubuntu/Debian:
+Run this **on the Linux gateway**. Linux CI/release binaries embed OpenConnect, its runtime libraries and vpnc-script; no separate VPN package installation is needed. The host needs systemd, iproute2, iptables, TUN, sudo and standard shell utilities. If `hku doctor` reports missing networking tools on Ubuntu/Debian:
 
 ```sh
-sudo apt-get install openconnect vpnc-scripts iproute2 iptables
+sudo apt-get install iproute2 iptables
 ```
 
 The gateway can be local Linux or a server accessible through ordinary SSH. For a remote gateway, install `hku` on both sides; Windows and macOS are clients only.
@@ -44,6 +44,8 @@ hku connect
 ```
 
 Native setup requests sudo to install a root-owned systemd service and configure an isolated netns, veth and NAT rules. It enables host IPv4 forwarding if necessary and leaves that shared setting enabled on shutdown. Host default routing and DNS stay unchanged. Daily connect/proxy/status commands run without sudo through an owner-only Unix socket.
+
+Embedded files are checksum-verified and unpacked into a private, versioned runtime directory. Update `hku` to update these dependencies; host libraries are not replaced. Windows/macOS clients contain no VPN runtime.
 
 Follow the prompts for your HKU password and Microsoft MFA code. **The command returns automatically when the VPN is ready**. The background service keeps running; no manual detach or tmux is needed. Authentication remains inside OpenConnect.
 

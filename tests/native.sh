@@ -100,6 +100,16 @@ PY
         --non-inter --user fixture "https://$host_ip:$tls_port" </dev/null > "$TMP/tls-trust.log" 2>&1 || true
     grep -q 'Connected to HTTPS' "$TMP/tls-trust.log" || { cat "$TMP/tls-trust.log"; exit 1; }
     echo 'PASS: embedded OpenConnect and TLS trust/rejection without host VPN packages.'
+    main_pid=$(systemctl show "hku-native-$id.service" --property MainPID --value)
+    sudo cp "$runtime/ca-certificates.crt" "$TMP/original-ca.crt"
+    sudo python3 -c 'import sys; f=open(sys.argv[1],"r+b"); f.write(b"!"); f.close()' "$runtime/ca-certificates.crt"
+    if hku up > "$TMP/tamper.log" 2>&1; then
+        echo 'FAIL: installer accepted a corrupted runtime cache'; exit 1
+    fi
+    grep -q 'Runtime checksum mismatch' "$TMP/tamper.log" || { cat "$TMP/tamper.log"; exit 1; }
+    test "$main_pid" = "$(systemctl show "hku-native-$id.service" --property MainPID --value)"
+    sudo cp "$TMP/original-ca.crt" "$runtime/ca-certificates.crt"
+    echo 'PASS: corrupted runtime cache rejected before stopping the existing service.'
     # Replace only the test VM's private executable with a matching musl fixture.
     # Production bundles never contain this fixture or a runtime override option.
     sudo install -m 755 "$HKU_TEST_MOCK" "$runtime/bin/openconnect.fixture"
