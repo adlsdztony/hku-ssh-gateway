@@ -9,6 +9,7 @@ id=
 namespace=
 host_server=
 peer_server=
+tls_server=
 fixture_installed=false
 export PATH="/usr/local/sbin:$PATH"
 export HKU_TEST_BIN="$BIN" HKU_TEST_STATE="$TMP/state"
@@ -20,6 +21,7 @@ cleanup() {
     hku down >/dev/null 2>&1 || true
     if [[ -n $host_server ]]; then kill "$host_server" 2>/dev/null || true; fi
     if [[ -n $peer_server ]]; then kill "$peer_server" 2>/dev/null || true; fi
+    if [[ -n $tls_server ]]; then kill "$tls_server" 2>/dev/null || true; fi
     sudo ip netns pids "$PEER" 2>/dev/null | xargs -r sudo kill -TERM 2>/dev/null || true
     sudo ip netns delete "$PEER" >/dev/null 2>&1 || true
     if [[ $id =~ ^[0-9a-f]{12}$ ]]; then sudo rm -rf -- "/var/lib/hku/native/$id"; fi
@@ -27,10 +29,17 @@ cleanup() {
     rm -rf -- "$TMP"
 }
 trap cleanup EXIT
-test ! -e /usr/local/sbin/openconnect
-cc -static -O2 -Wall -Wextra -Werror "$ROOT/tests/mock-openconnect.c" -o "$TMP/openconnect"
-sudo install -m 755 "$TMP/openconnect" /usr/local/sbin/openconnect
-fixture_installed=true
+if [[ -z ${HKU_TEST_RUNTIME:-} ]]; then
+    test ! -e /usr/local/sbin/openconnect
+    cc -static -O2 -Wall -Wextra -Werror "$ROOT/tests/mock-openconnect.c" -o "$TMP/openconnect"
+    sudo install -m 755 "$TMP/openconnect" /usr/local/sbin/openconnect
+    fixture_installed=true
+else
+    ! command -v openconnect
+    test ! -e /usr/share/vpnc-scripts/vpnc-script
+    test ! -e /etc/vpnc/vpnc-script
+    test -f "$HKU_TEST_MOCK"
+fi
 before_route=$(ip -4 route show default)
 before_dns=$(sha256sum /etc/resolv.conf)
 hku setup --user test@example.invalid --vpn-server fixture.invalid --project native-test \
@@ -56,6 +65,46 @@ test "$(stat -c %u "$socket")" = "$(id -u)"
 test "$(stat -c %u "/var/lib/hku/native")" = 0
 host_ip=$(ip -o -4 address show "hk$id" | awk '{split($4,a,"/"); print a[1]}')
 before_ns_route=$(sudo ip -n "$namespace" -4 route show default)
+if [[ -n ${HKU_TEST_RUNTIME:-} ]]; then
+    runtime="/var/lib/hku/native/$id/runtime/$(sha256sum "$HKU_TEST_RUNTIME" | cut -d ' ' -f 1)"
+    loader="$runtime/lib/ld-musl-$(uname -m).so.1"
+    sudo "$loader" --library-path "$runtime/lib" "$runtime/bin/openconnect" --version
+    openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=hku-fixture.invalid' \
+        -addext "subjectAltName=IP:$host_ip" -keyout "$TMP/key.pem" -out "$TMP/cert.pem" >/dev/null 2>&1
+    cat > "$TMP/tls.py" <<'PY'
+import socket, ssl, sys
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+context.load_cert_chain(sys.argv[2], sys.argv[3])
+server = socket.socket(); server.bind((sys.argv[1], 0)); server.listen()
+open(sys.argv[4], 'w').write(str(server.getsockname()[1]))
+while True:
+    c, _ = server.accept()
+    try:
+        with context.wrap_socket(c, server_side=True) as tls:
+            tls.recv(4096)
+            tls.sendall(b'HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
+    except (ssl.SSLError, ConnectionError, OSError): c.close()
+PY
+    python3 "$TMP/tls.py" "$host_ip" "$TMP/cert.pem" "$TMP/key.pem" "$TMP/tls-port" &
+    tls_server=$!
+    for attempt in {1..50}; do test ! -f "$TMP/tls-port" || break; sleep 0.1; done
+    tls_port=$(cat "$TMP/tls-port")
+    if timeout 15 sudo ip netns exec "$namespace" "$loader" --library-path "$runtime/lib" \
+        "$runtime/bin/openconnect" --no-system-trust --cafile="$runtime/ca-certificates.crt" \
+        --non-inter --user fixture "https://$host_ip:$tls_port" </dev/null > "$TMP/tls-reject.log" 2>&1; then
+        echo 'FAIL: bundled TLS accepted an untrusted certificate'; exit 1
+    fi
+    grep -qiE 'certificate.*(verify|verification|trust|signer)' "$TMP/tls-reject.log" || { cat "$TMP/tls-reject.log"; exit 1; }
+    timeout 15 sudo ip netns exec "$namespace" "$loader" --library-path "$runtime/lib" \
+        "$runtime/bin/openconnect" --no-system-trust --cafile="$TMP/cert.pem" \
+        --non-inter --user fixture "https://$host_ip:$tls_port" </dev/null > "$TMP/tls-trust.log" 2>&1 || true
+    grep -q 'Connected to HTTPS' "$TMP/tls-trust.log" || { cat "$TMP/tls-trust.log"; exit 1; }
+    echo 'PASS: embedded OpenConnect and TLS trust/rejection without host VPN packages.'
+    # Replace only the test VM's private executable with a matching musl fixture.
+    # Production bundles never contain this fixture or a runtime override option.
+    sudo install -m 755 "$HKU_TEST_MOCK" "$runtime/bin/openconnect.fixture"
+    sudo mv "$runtime/bin/openconnect.fixture" "$runtime/bin/openconnect"
+fi
 cat > "$TMP/listen.py" <<'PY'
 import socket, sys, threading
 s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

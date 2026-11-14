@@ -101,6 +101,24 @@ for origin, package in sorted(owners.items()):
     directory = recipe(package)
     destination = SOURCES / 'upstream' / origin
     destination.mkdir(parents=True)
+    # Prefer Alpine's archived inputs over occasionally unavailable upstreams.
+    # abuild still verifies them against the exact recipe checksums below.
+    checksums = re.search(r'(?:sha512sums|sha256sums|b2sums)=([\"\'])(.*?)\1',
+                          (directory / 'APKBUILD').read_text(), re.S)
+    if checksums:
+        for line in checksums.group(2).strip().splitlines():
+            fields = line.split()
+            if len(fields) != 2:
+                continue
+            name = fields[1]
+            if (directory / name).exists() or Path(name).name != name:
+                continue
+            try:
+                url = 'https://distfiles.alpinelinux.org/distfiles/v3.23/' + name
+                with urllib.request.urlopen(url, timeout=45) as response:
+                    (destination / name).write_bytes(response.read())
+            except (urllib.error.HTTPError, TimeoutError):
+                pass
     environment = dict(os.environ, SRCDEST=str(destination))
     subprocess.run(['abuild', '-F', '-d', 'fetch', 'verify'], cwd=directory, env=environment, check=True)
     notices = ROOT / 'licenses' / origin

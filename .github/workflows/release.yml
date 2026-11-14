@@ -59,12 +59,21 @@ jobs:
       - name: Install native static toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools
+          sudo apt-get install -y musl-tools iproute2 iptables util-linux
           rustup update stable
           rustup default stable
           rustup target add ${{ matrix.target }}
+      - name: Build embedded OpenConnect and corresponding sources
+        run: |
+          bash scripts/build-runtime.sh "$PWD/target/openconnect-runtime"
+          echo "HKU_OPENCONNECT_BUNDLE=$PWD/target/openconnect-runtime/runtime.tar.gz" >> "$GITHUB_ENV"
       - run: cargo test --locked --target ${{ matrix.target }}
       - run: cargo build --locked --release --target ${{ matrix.target }}
+      - name: Test bundled native runtime without host VPN packages
+        env:
+          HKU_TEST_RUNTIME: ${{ github.workspace }}/target/openconnect-runtime/runtime.tar.gz
+          HKU_TEST_MOCK: ${{ github.workspace }}/target/openconnect-runtime/mock-openconnect
+        run: bash tests/native.sh "$PWD/target/${{ matrix.target }}/release/hku"
       - name: Package binary
         shell: bash
         run: |
@@ -73,6 +82,7 @@ jobs:
           test "$(target/${{ matrix.target }}/release/hku --version)" = "hku $version"
           mkdir -p dist
           tar -czf "dist/hku-v$version-${{ matrix.target }}.tar.gz" -C target/${{ matrix.target }}/release hku
+          cp target/openconnect-runtime/runtime-sources.tar.gz "dist/hku-v$version-runtime-sources-${{ matrix.target }}.tar.gz"
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: hku-${{ matrix.target }}
