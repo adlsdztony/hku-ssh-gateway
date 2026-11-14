@@ -17,6 +17,12 @@ const ROOT: &str = "/var/lib/hku/native";
 const RUN: &str = "/run/hku-native";
 const MAX_FRAME: usize = 65536;
 
+fn raw_stdout() -> Result<std::fs::File> {
+    // Rust's Stdout is line-buffered; a TCP protocol must forward partial
+    // binary packets immediately even if no newline or EOF has arrived.
+    Ok(std::fs::File::from(nix::unistd::dup(std::io::stdout())?))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Deployment {

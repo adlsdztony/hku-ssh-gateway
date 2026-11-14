@@ -57,12 +57,18 @@ test "$(stat -c %u "/var/lib/hku/native")" = 0
 host_ip=$(ip -o -4 address show "hk$id" | awk '{split($4,a,"/"); print a[1]}')
 before_ns_route=$(sudo ip -n "$namespace" -4 route show default)
 cat > "$TMP/listen.py" <<'PY'
-import socket, sys
+import socket, sys, threading
 s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 s.bind((sys.argv[1], int(sys.argv[2]))); s.listen()
+def serve(c):
+    with c:
+        try:
+            c.sendall(b"HKU_NATIVE_OK\n")
+            while data := c.recv(65536): c.sendall(data)
+        except (ConnectionError, OSError): pass
 while True:
     c, _ = s.accept()
-    with c: c.sendall(b"HKU_NATIVE_OK\n")
+    threading.Thread(target=serve, args=(c,), daemon=True).start()
 PY
 python3 "$TMP/listen.py" "$host_ip" 18080 &
 host_server=$!
@@ -106,6 +112,30 @@ login > "$TMP/login.log" 2>&1 || { cat "$TMP/login.log"; exit 1; }
 grep -q 'VPN connected. It will keep running' "$TMP/login.log"
 if grep -qE 'fixture-password|fixture-otp' "$TMP/login.log"; then echo 'FAIL: input was echoed'; exit 1; fi
 test "$(timeout 8 "$BIN" --state-dir "$TMP/state" proxy 10.250.254.2 22 </dev/null)" = HKU_NATIVE_OK
+# Do not close stdin to trigger flushing: SSH needs binary packets immediately.
+python3 - "$BIN" "$TMP/state" <<'PY'
+import os, select, subprocess, sys, time
+p = subprocess.Popen([sys.argv[1], '--state-dir', sys.argv[2], 'proxy', '10.250.254.2', '22'],
+                     stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+def receive(size):
+    data = b''
+    deadline = time.monotonic() + 10
+    while len(data) < size:
+        ready, _, _ = select.select([p.stdout], [], [], max(0, deadline - time.monotonic()))
+        if not ready: raise AssertionError('Live binary stream stalled without newline/EOF')
+        chunk = os.read(p.stdout.fileno(), size - len(data))
+        if not chunk: raise AssertionError('Binary stream ended early')
+        data += chunk
+    return data
+try:
+    assert receive(len(b'HKU_NATIVE_OK\n')) == b'HKU_NATIVE_OK\n'
+    for payload in [b'\x00\xff', b'\x01\xfe\x00' * 300, b'\x02\xfd\x00' * 4000]:
+        p.stdin.write(payload); p.stdin.flush()
+        assert receive(len(payload)) == payload
+    print('PASS: live bidirectional binary forwarding without newline or EOF.')
+finally:
+    p.terminate(); p.wait(timeout=5)
+PY
 sleep 2
 hku status | grep -q 'Keepalive: ok'
 
@@ -153,6 +183,9 @@ login > "$TMP/retry.log" 2>&1 || { cat "$TMP/retry.log"; exit 1; }
 hku status | grep -q 'VPN: connected'
 hku down
 hku down
+if sudo journalctl -u "hku-native-$id.service" --no-pager | grep -qE 'Text file busy|Bind /etc/netns/.*/hku-owner'; then
+    echo 'FAIL: native installation or namespace bind warning' >&2; exit 1
+fi
 test ! -e "/run/netns/$namespace"
 test ! -e "$socket"
 if sudo iptables -S | grep -q "HKU_$id"; then echo 'FAIL: forwarding rules remain'; exit 1; fi

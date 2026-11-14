@@ -63,11 +63,15 @@ impl Network {
         PathBuf::from("/etc/netns").join(&self.namespace)
     }
     fn marker(&self) -> PathBuf {
-        self.directory().join("hku-owner")
+        PathBuf::from(ROOT).join(&self.id).join("network-owner")
     }
     fn owned(&self) -> bool {
-        fs::read_to_string(self.marker())
-            .is_ok_and(|text| text == format!("{}:{}", self.id, self.owner))
+        [self.marker(), self.directory().join("hku-owner")]
+            .iter()
+            .any(|path| {
+                fs::read_to_string(path)
+                    .is_ok_and(|text| text == format!("{}:{}", self.id, self.owner))
+            })
     }
     pub fn command(&self, program: impl AsRef<std::ffi::OsStr>) -> Command {
         let mut command = Command::new("ip");
@@ -334,6 +338,7 @@ impl Network {
         for name in ["resolv.conf", "nsswitch.conf", "hku-owner"] {
             let _ = fs::remove_file(self.directory().join(name));
         }
+        let _ = fs::remove_file(self.marker());
         let _ = fs::remove_dir(self.directory());
         Ok(())
     }

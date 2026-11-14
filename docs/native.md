@@ -36,4 +36,4 @@ New configurations default to native; old TOML without a backend field defaults 
 
 ## Validation
 
-The native integration test runs only on a dedicated CI VM. It checks a real systemd service and Linux namespaces with a terminal fixture, privilege boundaries, fail-closed streams, automatic login return, keepalive, scoped DNS updates, unchanged host default route/resolv.conf and cleanup of owned rules. It never authenticates to HKU and does not alter a user's live gateway. Live native HKU MFA remains a separate user acceptance check.
+The native integration test runs only on a dedicated CI VM. It checks a real systemd service and Linux namespaces with a terminal fixture, privilege boundaries, fail-closed streams, live bidirectional binary forwarding, automatic login return, keepalive, scoped DNS updates, unchanged host default route/resolv.conf and cleanup of owned rules. CI never authenticates to HKU or alters a user's live gateway. A separate live deployment has completed native HKU authentication, campus DNS and SSH banner checks; see [validation scope](validation.md) for the remaining acceptance boundary.

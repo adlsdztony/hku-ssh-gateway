@@ -475,14 +475,14 @@ fn tcp(host: &str, port: u16, timeout: u32) -> Result<TcpStream> {
 pub fn stream_child(owner: u32, group: u32, host: &str, port: u16) -> Result<i32> {
     drop_privileges(owner, group)?;
     let mut socket = tcp(host, port, 10)?;
-    io::stdout().write_all(&[0])?;
-    io::stdout().flush()?;
+    let mut output = raw_stdout()?;
+    output.write_all(&[0])?;
     let mut input = socket.try_clone()?;
     thread::spawn(move || {
         let _ = io::copy(&mut io::stdin(), &mut input);
         let _ = input.shutdown(Shutdown::Write);
     });
-    io::copy(&mut socket, &mut io::stdout())?;
+    io::copy(&mut socket, &mut output)?;
     Ok(0)
 }
 pub fn probe_child(owner: u32, group: u32, host: &str, port: u16, timeout: u32) -> Result<i32> {

@@ -88,7 +88,7 @@ pub fn proxy(runtime: &Runtime, host: &str, port: u16) -> Result<i32> {
         let _ = io::copy(&mut io::stdin(), &mut input);
         let _ = input.shutdown(Shutdown::Write);
     });
-    io::copy(&mut stream, &mut io::stdout())?;
+    io::copy(&mut stream, &mut raw_stdout()?)?;
     Ok(0)
 }
 

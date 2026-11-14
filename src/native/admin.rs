@@ -122,6 +122,9 @@ pub fn install() -> Result<i32> {
         .open(&temporary)?;
     std::io::copy(&mut fs::File::open(std::env::current_exe()?)?, &mut output)?;
     fs::set_permissions(&temporary, fs::Permissions::from_mode(0o755))?;
+    output.sync_all()?;
+    // Linux refuses exec while any writable descriptor for this inode is open.
+    drop(output);
     fs::rename(&temporary, d.binary())?;
     private_write(
         &d.directory().join("deployment.json"),
