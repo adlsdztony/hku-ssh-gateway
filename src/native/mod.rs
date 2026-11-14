@@ -23,6 +23,23 @@ fn raw_stdout() -> Result<std::fs::File> {
     Ok(std::fs::File::from(nix::unistd::dup(std::io::stdout())?))
 }
 
+fn relay(input: &mut impl Read, output: &mut impl Write) -> std::io::Result<u64> {
+    let mut buffer = [0u8; 16384];
+    let mut transferred = 0;
+    loop {
+        let count = match input.read(&mut buffer) {
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            result => result?,
+        };
+        if count == 0 {
+            return Ok(transferred);
+        }
+        output.write_all(&buffer[..count])?;
+        output.flush()?;
+        transferred += count as u64;
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Deployment {

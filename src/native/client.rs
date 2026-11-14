@@ -85,10 +85,10 @@ pub fn proxy(runtime: &Runtime, host: &str, port: u16) -> Result<i32> {
     )?;
     let mut input = stream.try_clone()?;
     thread::spawn(move || {
-        let _ = io::copy(&mut io::stdin(), &mut input);
+        let _ = relay(&mut io::stdin(), &mut input);
         let _ = input.shutdown(Shutdown::Write);
     });
-    io::copy(&mut stream, &mut raw_stdout()?)?;
+    relay(&mut stream, &mut raw_stdout()?)?;
     Ok(0)
 }
 

@@ -282,9 +282,9 @@ fn bridge(mut stream: UnixStream, d: &Deployment, host: &str, port: u16) -> Resu
         let mut input = stream.try_clone()?;
         let mut stdin = child.stdin.take().context("Missing proxy input")?;
         thread::spawn(move || {
-            let _ = io::copy(&mut input, &mut stdin);
+            let _ = relay(&mut input, &mut stdin);
         });
-        let _ = io::copy(&mut output, &mut stream);
+        let _ = relay(&mut output, &mut stream);
         let _ = stream.shutdown(Shutdown::Both);
         Ok(())
     })();
@@ -479,10 +479,10 @@ pub fn stream_child(owner: u32, group: u32, host: &str, port: u16) -> Result<i32
     output.write_all(&[0])?;
     let mut input = socket.try_clone()?;
     thread::spawn(move || {
-        let _ = io::copy(&mut io::stdin(), &mut input);
+        let _ = relay(&mut io::stdin(), &mut input);
         let _ = input.shutdown(Shutdown::Write);
     });
-    io::copy(&mut socket, &mut output)?;
+    relay(&mut socket, &mut output)?;
     Ok(0)
 }
 pub fn probe_child(owner: u32, group: u32, host: &str, port: u16, timeout: u32) -> Result<i32> {
