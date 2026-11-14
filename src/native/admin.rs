@@ -5,7 +5,7 @@ use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::Path;
 use std::process::Command;
 
-fn secure_directory(path: &Path, mode: u32) -> Result<()> {
+pub(super) fn secure_directory(path: &Path, mode: u32) -> Result<()> {
     if !path.exists() {
         fs::create_dir(path)?;
         fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
@@ -104,6 +104,7 @@ pub fn install() -> Result<i32> {
         secure_directory(Path::new(path), mode)?;
     }
     secure_directory(&d.directory(), 0o700)?;
+    bundle::install(&d)?;
     if d.directory().join("deployment.json").exists() {
         ensure!(
             load(&d.id)?.owner == d.owner,
@@ -111,8 +112,6 @@ pub fn install() -> Result<i32> {
         );
         let _ = Command::new("systemctl").args(["stop", &d.unit()]).status();
     }
-    vpnc_script()?;
-    openconnect()?;
     let temporary = d
         .directory()
         .join(format!("hku-install-{}", std::process::id()));

@@ -79,7 +79,12 @@ fn start(d: &Deployment, shared: &Shared) -> Result<()> {
         d.binary().display(),
         d.id
     );
-    let mut command = network.command(admin::openconnect()?);
+    let (program, arguments) = bundle::openconnect(d)?;
+    let mut command = network.command(program);
+    command.args(arguments);
+    for variable in ["LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT"] {
+        command.env_remove(variable);
+    }
     command.args([
         "--protocol=anyconnect",
         "--interface=tun0",

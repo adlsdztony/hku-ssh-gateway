@@ -20,6 +20,10 @@ serde_json = "1"
 [target.'cfg(target_os = "linux")'.dependencies]
 nix = { version = "0.31", features = ["term", "process", "signal", "user", "socket", "fs"] }
 signal-hook = "0.3"
+flate2 = "1"
+tar = "0.4"
+sha2 = "0.10"
+tempfile = "3"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }

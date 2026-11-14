@@ -423,7 +423,7 @@ pub fn hook(d: &Deployment) -> Result<i32> {
     }
     // Suppress host resolver integration and preserve OpenConnect's parent PID:
     // vpnc-script uses PPID to pair route backups across connect/disconnect.
-    Err(Command::new(admin::vpnc_script()?)
+    Err(Command::new(bundle::vpnc_script(d)?)
         .env_remove("INTERNAL_IP4_DNS")
         .env_remove("INTERNAL_IP6_DNS")
         .exec())

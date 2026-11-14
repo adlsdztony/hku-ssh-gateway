@@ -1,4 +1,5 @@
 mod admin;
+mod bundle;
 mod client;
 mod network;
 mod server;
@@ -241,7 +242,6 @@ pub fn doctor() -> Result<bool> {
         ("ip", vec!["-Version"]),
         ("iptables", vec!["--version"]),
         ("ip6tables", vec!["--version"]),
-        ("openconnect", vec!["--version"]),
         ("systemctl", vec!["--version"]),
         ("sudo", vec!["--version"]),
     ] {
@@ -254,16 +254,23 @@ pub fn doctor() -> Result<bool> {
         println!("{} {program}", if found { "OK" } else { "MISSING" });
         ok &= found;
     }
-    let script_result = admin::vpnc_script();
-    let script = script_result.is_ok();
-    println!("{} vpnc-script", if script { "OK" } else { "MISSING" });
-    if let Err(error) = script_result {
-        println!("{error:#}");
-    }
-    ok &= script;
-    if let Err(error) = admin::openconnect() {
-        println!("UNSAFE openconnect: {error:#}");
-        ok = false;
+    if bundle::available() {
+        if let Err(error) = bundle::doctor() {
+            println!("INVALID embedded runtime: {error:#}");
+            ok = false;
+        }
+    } else {
+        let script_result = admin::vpnc_script();
+        let script = script_result.is_ok();
+        println!("{} vpnc-script", if script { "OK" } else { "MISSING" });
+        if let Err(error) = script_result {
+            println!("{error:#}");
+        }
+        ok &= script;
+        if let Err(error) = admin::openconnect() {
+            println!("UNSAFE openconnect: {error:#}");
+            ok = false;
+        }
     }
     use std::os::unix::fs::FileTypeExt;
     let tun = std::fs::metadata("/dev/net/tun").is_ok_and(|m| m.file_type().is_char_device());
