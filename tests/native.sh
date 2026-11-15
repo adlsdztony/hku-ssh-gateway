@@ -69,6 +69,8 @@ if [[ -n ${HKU_TEST_RUNTIME:-} ]]; then
     runtime="/var/lib/hku/native/$id/runtime/$(sha256sum "$HKU_TEST_RUNTIME" | cut -d ' ' -f 1)"
     loader="$runtime/lib/ld-musl-$(uname -m).so.1"
     sudo "$loader" --library-path "$runtime/lib" "$runtime/bin/openconnect" --version
+    sudo ip netns exec "$namespace" /usr/bin/python3 "$ROOT/tests/strap-binding.py" \
+        "$loader" --library-path "$runtime/lib" "$runtime/bin/openconnect"
     openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=hku-fixture.invalid' \
         -addext "subjectAltName=IP:$host_ip" -keyout "$TMP/key.pem" -out "$TMP/cert.pem" >/dev/null 2>&1
     cat > "$TMP/tls.py" <<'PY'

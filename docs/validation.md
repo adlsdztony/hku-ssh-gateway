@@ -10,6 +10,8 @@ Linux bundled builds repeat the integration suite without host OpenConnect or vp
 
 A real bundled OpenConnect client also follows a local HTTPS 302 redirect to a hostname whose A/AAAA replies are deliberately delayed by 1.5 seconds. This reproduces the former one-second, single-attempt resolver failure and verifies that the actual namespace resolver configuration allows the redirected HTTPS endpoint to be reached. The test restores its namespace-only resolver file and never submits real VPN credentials.
 
+The Cisco tunnel-authentication fixture generates an ephemeral STRAP key and synthetic cookie locally, then verifies the actual client's CONNECT signature against TLS 1.2 tls-unique and TLS 1.3 tls-exporter channel bindings. Unpatched 9.12 passes TLS 1.2 but reproduces HTTP 401 and an invalid signature with TLS 1.3. The bundle therefore uses signed upstream 9.21 source, which includes the official compatibility fix. The fixture does not inspect real authentication traffic, issue a tunnel address, or change production login handling.
+
 ## Existing Docker implementation
 
 The original container implementation was tested with real HKU password/MFA, CSTP/DTLS, persistent tmux detachment, internal DNS and a complete destination SSH handshake from a Windows client. The destination host key matched the existing known_hosts record. Destination shell login was not verified because the test key was not authorized there.

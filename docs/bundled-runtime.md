@@ -1,6 +1,6 @@
 # Embedded OpenConnect runtime
 
-Linux CI/release executables contain a compressed runtime: OpenConnect 9.12,
+Linux CI/release executables contain a compressed runtime: OpenConnect 9.21,
 the musl loader, its transitive shared libraries, upstream vpnc-script and a CA
 certificate fallback. The executable remains a single file for installation.
 Windows/macOS builds contain only clients and do not include this payload.
@@ -35,6 +35,14 @@ certificate verification. Update the CLI and run `hku up` to deploy updated
 runtime libraries and fallback certificates; this restart requires VPN MFA again.
 The CLI does not overwrite the host's VPN client, certificates or shared libraries.
 
+The bundle uses the upstream TLS 1.3 Cisco STRAP channel-binding fix included in
+OpenConnect 9.20 and later. Unpatched 9.12 sources can authenticate successfully
+but receive HTTP 401 when establishing the tunnel; some distribution packages
+retain a 9.12 version label while backporting this fix. The bundled regression
+test verifies ECDSA signatures against RFC9266 TLS exporter data for TLS 1.3 and
+RFC5929 tls-unique data for TLS 1.2, without real VPN credentials. See the
+[upstream changelog](https://www.infradead.org/openconnect/changelog.html).
+
 Namespace DNS uses a five-second timeout with two attempts, both before login
 and after VPN DNS is applied. Uncached redirect hosts must not fail merely
 because a valid DNS reply takes longer than one second. No gateway addresses
@@ -50,7 +58,7 @@ HKU_OPENCONNECT_BUNDLE="$PWD/target/openconnect-runtime/runtime.tar.gz" cargo bu
 ```
 
 Docker is used only by this build helper. Native x86_64 and aarch64 CI runners
-build matching payloads. The helper builds checksum-pinned OpenConnect source
+build matching payloads. The helper verifies the release signature and builds checksum-pinned OpenConnect source
 against Alpine musl/GnuTLS, includes the shared-library closure and records exact
 package versions and recipe commits. It also creates a matching sources archive.
 

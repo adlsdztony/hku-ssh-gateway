@@ -43,7 +43,9 @@ with tarfile.open('/build/vpnc-scripts.tar.gz') as archive:
     (ROOT / 'licenses/vpnc-scripts').mkdir(parents=True)
     (ROOT / 'licenses/vpnc-scripts/COPYING').write_bytes(archive.extractfile('COPYING').read())
 (ROOT / 'vpnc-script').chmod(0o755)
-shutil.copyfile('/build/openconnect.tar.gz', SOURCES / 'openconnect-9.12.tar.gz')
+shutil.copyfile('/build/openconnect.tar.gz', SOURCES / 'openconnect-9.21.tar.gz')
+shutil.copyfile('/build/openconnect-release-key.asc', SOURCES / 'openconnect-release-key.asc')
+shutil.copyfile('/build/openconnect-9.21.tar.gz.asc', SOURCES / 'openconnect-9.21.tar.gz.asc')
 shutil.copyfile('/build/vpnc-scripts.tar.gz', SOURCES / 'vpnc-scripts-ce9e961.tar.gz')
 shutil.copyfile('/build/build-recipe.Dockerfile', SOURCES / 'Dockerfile')
 shutil.copyfile('/build/build-runtime.sh', SOURCES / 'build-runtime.sh')
@@ -154,7 +156,7 @@ metadata = {
     'vpnc_commit': 'ce9e961bd0f6b867e1c7c35f78f6fb973f6ff101',
     'packages': [{'name': p['P'], 'version': p['V'], 'origin': o, 'license': p['L'], 'commit': p['c']} for o, p in sorted(owners.items())],
 }
-notice = ('OpenConnect 9.12 is built from the unmodified upstream source with the flags in the paired sources archive.\n'
+notice = ('OpenConnect 9.21 is built from the unmodified upstream source with the flags in the paired sources archive.\n'
           'vpnc-script is unmodified upstream commit ' + metadata['vpnc_commit'] + '.\n'
           'Dynamic libraries and the musl loader are from Alpine Linux 3.23 signed packages.\n'
           'License texts and exact package recipes are in licenses/. Corresponding sources,\n'
@@ -164,7 +166,8 @@ notice = ('OpenConnect 9.12 is built from the unmodified upstream source with th
 (ROOT / 'THIRD-PARTY.txt').write_text(notice)
 (SOURCES / 'README.txt').write_text(notice + '\nRebuild the runtime with scripts/runtime/Dockerfile and collect.py from the project.\n'
     'Place Dockerfile and collect.py under scripts/runtime/, build-runtime.sh under scripts/,\n'
-    'mock-openconnect.c under tests/ and vpnc-scripts-ce9e961.tar.gz under third_party/.\n'
+    'mock-openconnect.c under tests/ and vpnc-scripts-ce9e961.tar.gz, openconnect-release-key.asc\n'
+    'and openconnect-9.21.tar.gz.asc under third_party/.\n'
     'recipes/ contains the exact Alpine APKBUILDs and patches. upstream/ contains\n'
     'all fetched and checksum-verified source inputs for those recipes. Use Alpine abuild\n'
     'on the recorded architecture to rebuild the corresponding library packages.\n')

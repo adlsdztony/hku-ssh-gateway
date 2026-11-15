@@ -7,3 +7,5 @@
 !tests/mock-openconnect.c
 !third_party/
 !third_party/vpnc-scripts-ce9e961.tar.gz
+!third_party/openconnect-release-key.asc
+!third_party/openconnect-9.21.tar.gz.asc
