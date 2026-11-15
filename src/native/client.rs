@@ -44,6 +44,7 @@ fn admin(runtime: &Runtime, remove: bool) -> Result<()> {
     Ok(())
 }
 pub fn up(runtime: &Runtime) -> Result<i32> {
+    persist_identity(runtime)?;
     admin(runtime, false)?;
     let deadline = Instant::now() + Duration::from_secs(20);
     while Instant::now() < deadline {

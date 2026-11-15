@@ -112,6 +112,22 @@ pub fn install() -> Result<i32> {
         );
         let _ = Command::new("systemctl").args(["stop", &d.unit()]).status();
     }
+    install_executable(&d)?;
+    private_write(
+        &d.directory().join("deployment.json"),
+        &serde_json::to_vec_pretty(&d)?,
+    )?;
+    let unit = format!("[Unit]\nDescription=HKU native VPN gateway {}\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=exec\nExecStart={} native-internal daemon --id {}\nRestart=on-failure\nRestartSec=3\nKillMode=mixed\nTimeoutStopSec=20\nUMask=0077\n\n[Install]\nWantedBy=multi-user.target\n", d.id, d.binary().display(), d.id);
+    let unit_path = PathBuf::from("/etc/systemd/system").join(d.unit());
+    private_write(&unit_path, unit.as_bytes())?;
+    fs::set_permissions(&unit_path, fs::Permissions::from_mode(0o644))?;
+    success(Command::new("systemctl").arg("daemon-reload"))?;
+    success(Command::new("systemctl").args(["enable", "--now", &d.unit()]))?;
+    println!("Native service installed: {}", d.unit());
+    Ok(0)
+}
+
+fn install_executable(d: &Deployment) -> Result<()> {
     let temporary = d
         .directory()
         .join(format!("hku-install-{}", std::process::id()));
@@ -125,17 +141,21 @@ pub fn install() -> Result<i32> {
     // Linux refuses exec while any writable descriptor for this inode is open.
     drop(output);
     fs::rename(&temporary, d.binary())?;
-    private_write(
-        &d.directory().join("deployment.json"),
-        &serde_json::to_vec_pretty(&d)?,
-    )?;
-    let unit = format!("[Unit]\nDescription=HKU native VPN gateway {}\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=exec\nExecStart={} native-internal daemon --id {}\nRestart=on-failure\nRestartSec=3\nKillMode=mixed\nTimeoutStopSec=20\nUMask=0077\n\n[Install]\nWantedBy=multi-user.target\n", d.id, d.binary().display(), d.id);
-    let unit_path = PathBuf::from("/etc/systemd/system").join(d.unit());
-    private_write(&unit_path, unit.as_bytes())?;
-    fs::set_permissions(&unit_path, fs::Permissions::from_mode(0o644))?;
-    success(Command::new("systemctl").arg("daemon-reload"))?;
-    success(Command::new("systemctl").args(["enable", "--now", &d.unit()]))?;
-    println!("Native service installed: {}", d.unit());
+    Ok(())
+}
+
+pub fn stage(id: &str) -> Result<i32> {
+    let d = load(id)?;
+    if let Ok(uid) = std::env::var("SUDO_UID") {
+        ensure!(
+            uid.parse::<u32>()? == d.owner,
+            "Deployment belongs to another user"
+        );
+    }
+    secure_directory(&d.directory(), 0o700)?;
+    bundle::install(&d)?;
+    install_executable(&d)?;
+    println!("Executable/runtime staged. The current daemon and VPN session are preserved; the new daemon loads on its next restart.");
     Ok(0)
 }
 

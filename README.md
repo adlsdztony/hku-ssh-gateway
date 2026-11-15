@@ -4,8 +4,6 @@
 
 A Rust CLI for accessing HKU internal services through an isolated Linux VPN gateway. Native network namespaces are the default for new deployments; Docker remains optional. Any VPN-reachable TCP destination is allowed by default.
 
-> The native backend is experimental on this branch and is not yet released. Release installers below still provide the stable Docker version. See [source builds and the embedded runtime](docs/bundled-runtime.md) to try this branch.
-
 ## Install
 
 ### Linux / macOS

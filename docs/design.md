@@ -28,4 +28,4 @@ The supervised TCP keepalive waits for a configured VPN interface, resolves its 
 
 ## Packaging
 
-Release binaries embed only runtime templates, never instance data. Linux amd64/arm64 runners build musl binaries; Windows and macOS Intel/Apple Silicon runners build clients. Tagged publication depends on Rust, installer, native and Docker integration checks. The Bash installer downloads over GitHub HTTPS, checks SHA256SUMS and atomically replaces the CLI binary, without restarting deployments. This branch is experimental; the current stable release still provides the Docker implementation.
+Release binaries embed runtime templates and, on Linux, the portable VPN runtime, never instance data. Linux amd64/arm64 runners build musl binaries; Windows and macOS Intel/Apple Silicon runners build clients. Tagged publication depends on Rust, installer, native and Docker integration checks. The Bash installer downloads over GitHub HTTPS, checks SHA256SUMS and atomically replaces the CLI binary, without restarting deployments.

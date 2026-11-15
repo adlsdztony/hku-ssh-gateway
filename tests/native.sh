@@ -113,6 +113,8 @@ PY
     test "$main_pid" = "$(systemctl show "hku-native-$id.service" --property MainPID --value)"
     sudo cp "$TMP/original-ca.crt" "$runtime/ca-certificates.crt"
     echo 'PASS: corrupted runtime cache rejected before stopping the existing service.'
+    sudo "$BIN" native-internal stage --id "$id"
+    test "$main_pid" = "$(systemctl show "hku-native-$id.service" --property MainPID --value)"
     # Replace only the test VM's private executable with a matching musl fixture.
     # Production bundles never contain this fixture or a runtime override option.
     sudo install -m 755 "$HKU_TEST_MOCK" "$runtime/bin/openconnect.fixture"
@@ -200,6 +202,16 @@ finally:
 PY
 sleep 2
 hku status | grep -q 'Keepalive: ok'
+main_pid=$(systemctl show "hku-native-$id.service" --property MainPID --value)
+# Staging does not revalidate the fixture-mutated cache in bundled test mode.
+if [[ -z ${HKU_TEST_RUNTIME:-} ]]; then
+    sudo "$BIN" native-internal stage --id "$id"
+    test "$main_pid" = "$(systemctl show "hku-native-$id.service" --property MainPID --value)"
+    hku status | grep -q 'VPN: connected'
+fi
+mv "$TMP/state" "$TMP/relocated-state"
+"$BIN" --state-dir "$TMP/relocated-state" status | grep -q 'VPN: connected'
+mv "$TMP/relocated-state" "$TMP/state"
 
 # The mock invokes the real routing hook with a complete OpenConnect environment.
 sudo grep -q 'nameserver 10.250.254.2' "/etc/netns/$namespace/resolv.conf"

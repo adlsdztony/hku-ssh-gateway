@@ -91,6 +91,29 @@ fn identity(runtime: &Runtime) -> Result<String> {
         .dir
         .canonicalize()
         .context("Initialize the deployment first")?;
+    let marker = path.join("native-instance.json");
+    match std::fs::symlink_metadata(&marker) {
+        Ok(metadata) => {
+            use std::os::unix::fs::MetadataExt;
+            ensure!(
+                metadata.is_file()
+                    && !metadata.file_type().is_symlink()
+                    && metadata.uid() == nix::unistd::getuid().as_raw()
+                    && metadata.mode() & 0o077 == 0,
+                "Native instance marker must be an owner-private regular file"
+            );
+            let saved: InstanceIdentity = serde_json::from_slice(&std::fs::read(marker)?)?;
+            ensure!(
+                saved.owner == nix::unistd::getuid().as_raw()
+                    && saved.id.len() == 12
+                    && saved.id.bytes().all(|b| b.is_ascii_hexdigit()),
+                "Invalid native instance marker or owner"
+            );
+            return Ok(saved.id);
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+        Err(error) => return Err(error.into()),
+    }
     let mut hash = 0xcbf29ce484222325u64;
     for b in path.as_os_str().as_encoded_bytes() {
         hash ^= u64::from(*b);
@@ -101,6 +124,25 @@ fn identity(runtime: &Runtime) -> Result<String> {
         hash = hash.wrapping_mul(0x100000001b3);
     }
     Ok(format!("{:012x}", hash & 0xffffffffffff))
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InstanceIdentity {
+    id: String,
+    owner: u32,
+}
+
+fn persist_identity(runtime: &Runtime) -> Result<()> {
+    let saved = InstanceIdentity {
+        id: identity(runtime)?,
+        owner: nix::unistd::getuid().as_raw(),
+    };
+    let marker = runtime.dir.join("native-instance.json");
+    if !marker.exists() {
+        crate::runtime::private_write(&marker, &serde_json::to_vec_pretty(&saved)?)?;
+    }
+    Ok(())
 }
 
 fn deployment(runtime: &Runtime) -> Result<Deployment> {
@@ -173,6 +215,11 @@ fn read_frame(stream: &mut impl Read) -> Result<(u8, Vec<u8>)> {
 #[derive(clap::Subcommand)]
 pub enum Internal {
     Install,
+    /// Stage a compatible executable/runtime update without restarting a session
+    Stage {
+        #[arg(long)]
+        id: String,
+    },
     Remove {
         #[arg(long)]
         id: String,
@@ -216,6 +263,7 @@ pub fn internal(command: Internal) -> Result<i32> {
     );
     match command {
         Internal::Install => admin::install(),
+        Internal::Stage { id } => admin::stage(&id),
         Internal::Remove { id } => admin::remove(&id),
         Internal::Daemon { id } => server::run(admin::load(&id)?),
         Internal::Hook { id } => network::hook(&admin::load(&id)?),
@@ -287,6 +335,30 @@ pub fn doctor() -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn identity_survives_relocation_and_rejects_another_owner() {
+        let temporary = tempfile::tempdir().unwrap();
+        let original = temporary.path().join("original");
+        std::fs::create_dir(&original).unwrap();
+        let runtime = Runtime::new(original.clone()).unwrap();
+        let expected = identity(&runtime).unwrap();
+        persist_identity(&runtime).unwrap();
+        let relocated = temporary.path().join("relocated");
+        std::fs::rename(original, &relocated).unwrap();
+        let runtime = Runtime::new(relocated).unwrap();
+        assert_eq!(identity(&runtime).unwrap(), expected);
+        crate::runtime::private_write(
+            &runtime.dir.join("native-instance.json"),
+            &serde_json::to_vec(&InstanceIdentity {
+                id: expected,
+                owner: nix::unistd::getuid().as_raw() ^ 1,
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(identity(&runtime).is_err());
+    }
+
     #[test]
     fn control_protocol_rejects_oversized_terminal_frames() {
         let bytes = [b'I', 0xff, 0xff, 0xff, 0xff];

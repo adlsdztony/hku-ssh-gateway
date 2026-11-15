@@ -4,8 +4,6 @@
 
 通过隔离的 Linux VPN 网关访问校内服务的 Rust CLI。新部署默认使用原生网络命名空间，Docker 保留为可选后端。默认允许任意 VPN 可达的 TCP 目标。
 
-> 本分支的原生后端仍处于实验阶段，尚未发布。下面的 Release 安装脚本仍提供稳定的 Docker 版本；体验本分支请参见[源码构建与内置运行包](docs/bundled-runtime.md)。
-
 ## 安装
 
 ### Linux / macOS

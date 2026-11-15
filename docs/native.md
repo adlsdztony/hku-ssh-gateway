@@ -1,6 +1,6 @@
-# Native Linux backend (experimental)
+# Native Linux backend
 
-This experimental backend is on `feat/native-linux-backend` and is not included in the current stable release. See [source build instructions](bundled-runtime.md#source-builds) to include the VPN runtime. Windows and macOS provide remote SSH/proxy clients only; their configuration and private keys stay on the client.
+The native backend is the default for new Linux deployments. See [source build instructions](bundled-runtime.md#source-builds) to include the VPN runtime. Windows and macOS provide remote SSH/proxy clients only; their configuration and private keys stay on the client.
 
 ## Setup and ownership
 
@@ -14,7 +14,10 @@ Runtime control uses `/run/hku-native/INSTANCE.sock`, mode 0600 and owned by the
 
 Each instance has its own named network namespace, veth pair and private /30 transit network. The namespace owns the VPN interface and default route. The host receives only an instance-specific veth route and tagged forwarding/NAT rules, not a replacement default route. Conflicting transit ranges are rejected; configure `native.subnet` to select another range.
 
-Setup enables host IPv4 forwarding if it is disabled. This shared host setting is deliberately left enabled on shutdown, avoiding interference with other routing applications. `down` removes only the owned namespace, veth, service unit and tagged firewall rules; installed metadata and user configuration remain for later use. Stop a deployment before moving its state directory, since its identity includes the canonical path and owner UID.
+Setup enables host IPv4 forwarding if it is disabled. This shared host setting is deliberately left enabled on shutdown, avoiding interference with other routing applications. `down` removes only the owned namespace, veth, service unit and tagged firewall rules; installed metadata and user configuration remain for later use. New deployments save an owner-private `native-instance.json` marker so moving their state directory preserves the service identity. Legacy directories without a marker still derive identity from their canonical path and owner UID; pin their existing ID before relocating them.
+
+The marker identifies the same instance on that host. Copy only the configuration,
+without the marker, when creating an independent deployment.
 
 Forwarded sockets use an unprivileged UID whose namespace OUTPUT rules allow only tun0 and loopback, including IPv6. When tun0 goes away, existing streams cannot escape over the veth. This is network isolation, not container filesystem/process isolation; the OpenConnect process still has administrative host capabilities.
 
@@ -27,6 +30,8 @@ Namespace-specific `resolv.conf` and `nsswitch.conf` are bind-mounted by `ip net
 ## Authentication and lifecycle
 
 The root service holds OpenConnect's pseudo-terminal. `hku connect` relays terminal bytes over the owner-only socket, without parsing prompts or extracting cookies. Credentials are handled by OpenConnect. Authentication output is not retained in logs. The client automatically restores its terminal and returns when the process, VPN address and route are ready; the daemon keeps the PTY alive.
+
+For protocol-compatible maintenance, administrators can use the hidden `native-internal stage --id INSTANCE` operation through sudo to verify/extract runtime assets and atomically update the installed executable without stopping the current session. The running daemon keeps its current code until its next restart. Configuration or daemon-behavior changes still require `hku up` and fresh VPN authentication. Staging checks the existing deployment owner and is not an unprivileged runtime-control operation.
 
 Keepalive uses a separate unprivileged worker inside the namespace. A host/service restart requires interactive MFA again. `hku logs` returns a bounded buffer of post-connection output; systemd lifecycle errors are available through `sudo journalctl -u hku-native-INSTANCE.service`.
 
