@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 
-use crate::config::Config;
+use crate::config::{Backend, Config};
 
 const ASSETS: &[(&str, &str)] = &[
     ("Dockerfile", include_str!("../Dockerfile")),
@@ -116,6 +116,9 @@ impl Runtime {
 
     pub fn sync(&self) -> Result<Config> {
         let config = self.load()?;
+        if config.backend != Backend::Docker {
+            return Ok(config);
+        }
         for (name, text) in ASSETS {
             let path = self.dir.join(name);
             fs::create_dir_all(path.parent().context("Invalid asset path")?)?;
@@ -183,6 +186,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let runtime = Runtime::new(temp.path().into()).unwrap();
         let config = Config {
+            backend: Backend::Docker,
             vpn_user: "test@example.invalid".into(),
             ..Config::default()
         };

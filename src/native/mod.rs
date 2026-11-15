@@ -1,0 +1,372 @@
+mod admin;
+mod bundle;
+mod client;
+mod network;
+mod server;
+
+use anyhow::{ensure, Context, Result};
+use serde::{Deserialize, Serialize};
+use std::io::{Read, Write};
+use std::path::PathBuf;
+
+use crate::config::{Backend, Config};
+use crate::runtime::Runtime;
+
+pub use client::{connect, disconnect, down, logs, proxy, status, up};
+
+const ROOT: &str = "/var/lib/hku/native";
+const RUN: &str = "/run/hku-native";
+const MAX_FRAME: usize = 65536;
+
+fn raw_stdout() -> Result<std::fs::File> {
+    // Rust's Stdout is line-buffered; a TCP protocol must forward partial
+    // binary packets immediately even if no newline or EOF has arrived.
+    Ok(std::fs::File::from(nix::unistd::dup(std::io::stdout())?))
+}
+
+fn relay(input: &mut impl Read, output: &mut impl Write) -> std::io::Result<u64> {
+    let mut buffer = [0u8; 16384];
+    let mut transferred = 0;
+    loop {
+        let count = match input.read(&mut buffer) {
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            result => result?,
+        };
+        if count == 0 {
+            return Ok(transferred);
+        }
+        output.write_all(&buffer[..count])?;
+        output.flush()?;
+        transferred += count as u64;
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Deployment {
+    id: String,
+    owner: u32,
+    group: u32,
+    config: Config,
+}
+
+impl Deployment {
+    fn validate(&self) -> Result<()> {
+        ensure!(
+            self.id.len() == 12 && self.id.bytes().all(|b| b.is_ascii_hexdigit()),
+            "Invalid native instance ID"
+        );
+        ensure!(self.owner > 0, "Native deployments require a non-root owner; invoke hku normally and let it request sudo");
+        ensure!(
+            self.group > 0,
+            "Native deployments require a non-root primary group"
+        );
+        ensure!(
+            self.config.backend == Backend::Native,
+            "Not a native configuration"
+        );
+        self.config.validate()?;
+        network::Network::new(self)?;
+        Ok(())
+    }
+    fn directory(&self) -> PathBuf {
+        PathBuf::from(ROOT).join(&self.id)
+    }
+    fn binary(&self) -> PathBuf {
+        self.directory().join("hku")
+    }
+    fn namespace(&self) -> String {
+        format!("hku-{}", self.id)
+    }
+    fn unit(&self) -> String {
+        format!("hku-native-{}.service", self.id)
+    }
+    fn socket(&self) -> PathBuf {
+        PathBuf::from(RUN).join(format!("{}.sock", self.id))
+    }
+}
+
+fn identity(runtime: &Runtime) -> Result<String> {
+    let path = runtime
+        .dir
+        .canonicalize()
+        .context("Initialize the deployment first")?;
+    let marker = path.join("native-instance.json");
+    match std::fs::symlink_metadata(&marker) {
+        Ok(metadata) => {
+            use std::os::unix::fs::MetadataExt;
+            ensure!(
+                metadata.is_file()
+                    && !metadata.file_type().is_symlink()
+                    && metadata.uid() == nix::unistd::getuid().as_raw()
+                    && metadata.mode() & 0o077 == 0,
+                "Native instance marker must be an owner-private regular file"
+            );
+            let saved: InstanceIdentity = serde_json::from_slice(&std::fs::read(marker)?)?;
+            ensure!(
+                saved.owner == nix::unistd::getuid().as_raw()
+                    && saved.id.len() == 12
+                    && saved.id.bytes().all(|b| b.is_ascii_hexdigit()),
+                "Invalid native instance marker or owner"
+            );
+            return Ok(saved.id);
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+        Err(error) => return Err(error.into()),
+    }
+    let mut hash = 0xcbf29ce484222325u64;
+    for b in path.as_os_str().as_encoded_bytes() {
+        hash ^= u64::from(*b);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    for b in nix::unistd::getuid().as_raw().to_le_bytes() {
+        hash ^= u64::from(b);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    Ok(format!("{:012x}", hash & 0xffffffffffff))
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InstanceIdentity {
+    id: String,
+    owner: u32,
+}
+
+fn persist_identity(runtime: &Runtime) -> Result<()> {
+    let saved = InstanceIdentity {
+        id: identity(runtime)?,
+        owner: nix::unistd::getuid().as_raw(),
+    };
+    let marker = runtime.dir.join("native-instance.json");
+    if !marker.exists() {
+        crate::runtime::private_write(&marker, &serde_json::to_vec_pretty(&saved)?)?;
+    }
+    Ok(())
+}
+
+fn deployment(runtime: &Runtime) -> Result<Deployment> {
+    let owner = nix::unistd::getuid().as_raw();
+    let result = Deployment {
+        id: identity(runtime)?,
+        owner,
+        group: nix::unistd::getgid().as_raw(),
+        config: runtime.load()?,
+    };
+    result.validate()?;
+    Ok(result)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "op", rename_all = "kebab-case")]
+enum Request {
+    Status,
+    Connect,
+    Disconnect,
+    Logs,
+    Proxy { host: String, port: u16 },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Reply {
+    ok: bool,
+    message: String,
+    #[serde(default)]
+    ready: bool,
+}
+
+fn send_json(stream: &mut impl Write, value: &impl Serialize) -> Result<()> {
+    serde_json::to_writer(&mut *stream, value)?;
+    stream.write_all(b"\n")?;
+    stream.flush()?;
+    Ok(())
+}
+fn read_json<T: serde::de::DeserializeOwned>(stream: &mut impl Read) -> Result<T> {
+    let mut data = Vec::new();
+    loop {
+        let mut byte = [0];
+        stream.read_exact(&mut byte)?;
+        if byte[0] == b'\n' {
+            break;
+        }
+        ensure!(data.len() < MAX_FRAME, "Control message too large");
+        data.push(byte[0]);
+    }
+    Ok(serde_json::from_slice(&data)?)
+}
+fn send_frame(stream: &mut impl Write, kind: u8, payload: &[u8]) -> Result<()> {
+    ensure!(payload.len() <= MAX_FRAME, "Terminal frame too large");
+    stream.write_all(&[kind])?;
+    stream.write_all(&(payload.len() as u32).to_be_bytes())?;
+    stream.write_all(payload)?;
+    stream.flush()?;
+    Ok(())
+}
+fn read_frame(stream: &mut impl Read) -> Result<(u8, Vec<u8>)> {
+    let mut header = [0u8; 5];
+    stream.read_exact(&mut header)?;
+    let size = u32::from_be_bytes(header[1..5].try_into()?) as usize;
+    ensure!(size <= MAX_FRAME, "Terminal frame too large");
+    let mut bytes = vec![0; size];
+    stream.read_exact(&mut bytes)?;
+    Ok((header[0], bytes))
+}
+
+#[derive(clap::Subcommand)]
+pub enum Internal {
+    Install,
+    /// Stage a compatible executable/runtime update without restarting a session
+    Stage {
+        #[arg(long)]
+        id: String,
+    },
+    Remove {
+        #[arg(long)]
+        id: String,
+    },
+    Daemon {
+        #[arg(long)]
+        id: String,
+    },
+    Hook {
+        #[arg(long)]
+        id: String,
+    },
+    Stream {
+        #[arg(long)]
+        owner: u32,
+        #[arg(long)]
+        group: u32,
+        #[arg(long)]
+        host: String,
+        #[arg(long)]
+        port: u16,
+    },
+    Probe {
+        #[arg(long)]
+        owner: u32,
+        #[arg(long)]
+        group: u32,
+        #[arg(long)]
+        host: String,
+        #[arg(long)]
+        port: u16,
+        #[arg(long)]
+        timeout: u32,
+    },
+}
+
+pub fn internal(command: Internal) -> Result<i32> {
+    ensure!(
+        nix::unistd::geteuid().is_root(),
+        "This internal operation requires root"
+    );
+    match command {
+        Internal::Install => admin::install(),
+        Internal::Stage { id } => admin::stage(&id),
+        Internal::Remove { id } => admin::remove(&id),
+        Internal::Daemon { id } => server::run(admin::load(&id)?),
+        Internal::Hook { id } => network::hook(&admin::load(&id)?),
+        Internal::Stream {
+            owner,
+            group,
+            host,
+            port,
+        } => server::stream_child(owner, group, &host, port),
+        Internal::Probe {
+            owner,
+            group,
+            host,
+            port,
+            timeout,
+        } => server::probe_child(owner, group, &host, port, timeout),
+    }
+}
+
+pub fn doctor() -> Result<bool> {
+    use std::process::{Command, Stdio};
+    let mut ok = true;
+    for (program, args) in [
+        ("ip", vec!["-Version"]),
+        ("iptables", vec!["--version"]),
+        ("ip6tables", vec!["--version"]),
+        ("systemctl", vec!["--version"]),
+        ("sudo", vec!["--version"]),
+    ] {
+        let found = Command::new(program)
+            .args(args)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+        println!("{} {program}", if found { "OK" } else { "MISSING" });
+        ok &= found;
+    }
+    if bundle::available() {
+        if let Err(error) = bundle::doctor() {
+            println!("INVALID embedded runtime: {error:#}");
+            ok = false;
+        }
+    } else {
+        let script_result = admin::vpnc_script();
+        let script = script_result.is_ok();
+        println!("{} vpnc-script", if script { "OK" } else { "MISSING" });
+        if let Err(error) = script_result {
+            println!("{error:#}");
+        }
+        ok &= script;
+        if let Err(error) = admin::openconnect() {
+            println!("UNSAFE openconnect: {error:#}");
+            ok = false;
+        }
+    }
+    use std::os::unix::fs::FileTypeExt;
+    let tun = std::fs::metadata("/dev/net/tun").is_ok_and(|m| m.file_type().is_char_device());
+    println!("{} /dev/net/tun", if tun { "OK" } else { "MISSING" });
+    ok &= tun;
+    let systemd = std::path::Path::new("/run/systemd/system").is_dir();
+    println!(
+        "{} systemd system manager",
+        if systemd { "OK" } else { "MISSING" }
+    );
+    Ok(ok && systemd)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn identity_survives_relocation_and_rejects_another_owner() {
+        let temporary = tempfile::tempdir().unwrap();
+        let original = temporary.path().join("original");
+        std::fs::create_dir(&original).unwrap();
+        let runtime = Runtime::new(original.clone()).unwrap();
+        let expected = identity(&runtime).unwrap();
+        persist_identity(&runtime).unwrap();
+        let relocated = temporary.path().join("relocated");
+        std::fs::rename(original, &relocated).unwrap();
+        let runtime = Runtime::new(relocated).unwrap();
+        assert_eq!(identity(&runtime).unwrap(), expected);
+        crate::runtime::private_write(
+            &runtime.dir.join("native-instance.json"),
+            &serde_json::to_vec(&InstanceIdentity {
+                id: expected,
+                owner: nix::unistd::getuid().as_raw() ^ 1,
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(identity(&runtime).is_err());
+    }
+
+    #[test]
+    fn control_protocol_rejects_oversized_terminal_frames() {
+        let bytes = [b'I', 0xff, 0xff, 0xff, 0xff];
+        assert!(read_frame(&mut bytes.as_slice()).is_err());
+        let mut output = Vec::new();
+        send_frame(&mut output, b'O', b"terminal bytes").unwrap();
+        let (kind, payload) = read_frame(&mut output.as_slice()).unwrap();
+        assert_eq!(kind, b'O');
+        assert_eq!(payload, b"terminal bytes");
+    }
+}

@@ -27,6 +27,23 @@ jobs:
       - run: bash tests/installer.sh
       - run: bash tests/smoke.sh "$PWD/target/debug/hku"
       - run: bash tests/connection.sh "$PWD/target/debug/hku"
+  native:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openconnect vpnc-scripts iproute2 iptables util-linux
+          # Hosted runners make /usr/share writable through an ACL. The daemon
+          # deliberately rejects that privilege boundary; harden this test VM.
+          sudo setfacl -b /usr/share
+          sudo chmod 755 /usr/share
+          test -c /dev/net/tun || sudo modprobe tun
+          rustup update stable
+          rustup default stable
+      - run: cargo build --locked
+      - run: bash tests/native.sh "$PWD/target/debug/hku"
   build:
     strategy:
       fail-fast: false
@@ -42,12 +59,21 @@ jobs:
       - name: Install native static toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools
+          sudo apt-get install -y musl-tools iproute2 iptables util-linux python3-openssl
           rustup update stable
           rustup default stable
           rustup target add ${{ matrix.target }}
+      - name: Build embedded OpenConnect and corresponding sources
+        run: |
+          bash scripts/build-runtime.sh "$PWD/target/openconnect-runtime"
+          echo "HKU_OPENCONNECT_BUNDLE=$PWD/target/openconnect-runtime/runtime.tar.gz" >> "$GITHUB_ENV"
       - run: cargo test --locked --target ${{ matrix.target }}
       - run: cargo build --locked --release --target ${{ matrix.target }}
+      - name: Test bundled native runtime without host VPN packages
+        env:
+          HKU_TEST_RUNTIME: ${{ github.workspace }}/target/openconnect-runtime/runtime.tar.gz
+          HKU_TEST_MOCK: ${{ github.workspace }}/target/openconnect-runtime/mock-openconnect
+        run: bash tests/native.sh "$PWD/target/${{ matrix.target }}/release/hku"
       - name: Package binary
         shell: bash
         run: |
@@ -56,10 +82,18 @@ jobs:
           test "$(target/${{ matrix.target }}/release/hku --version)" = "hku $version"
           mkdir -p dist
           tar -czf "dist/hku-v$version-${{ matrix.target }}.tar.gz" -C target/${{ matrix.target }}/release hku
+          cp target/openconnect-runtime/runtime-sources.tar.gz "dist/hku-v$version-runtime-sources-${{ matrix.target }}.tar.gz"
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: hku-${{ matrix.target }}
-          path: dist/*.tar.gz
+          path: |
+            dist/hku-v*-${{ matrix.target }}.tar.gz
+            !dist/*-runtime-sources-*.tar.gz
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: hku-runtime-sources-${{ matrix.target }}
+          path: dist/*-runtime-sources-*.tar.gz
           if-no-files-found: error
   windows:
     runs-on: windows-2025
@@ -84,9 +118,33 @@ jobs:
           name: hku-x86_64-pc-windows-msvc
           path: dist/*.zip
           if-no-files-found: error
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - run: rustup update stable && rustup default stable
+      - run: cargo test --locked
+      - run: cargo build --locked --release
+      - name: Package client
+        run: |
+          version=$(target/release/hku --version | cut -d ' ' -f 2)
+          mkdir -p dist
+          tar -czf "dist/hku-v$version-${{ matrix.target }}.tar.gz" -C target/release hku
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: hku-${{ matrix.target }}
+          path: dist/*.tar.gz
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [quality, build, windows]
+    needs: [quality, native, build, windows, macos]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

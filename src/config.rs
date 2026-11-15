@@ -1,15 +1,38 @@
 use anyhow::{bail, ensure, Context, Result};
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum Backend {
+    Native,
+    Docker,
+}
+
+fn legacy_backend() -> Backend {
+    Backend::Docker
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Native {
+    /// Optional private /30 subnet. Otherwise derived from the deployment ID.
+    pub subnet: Option<String>,
+    /// Initial upstream DNS; host non-loopback DNS is used when omitted.
+    pub bootstrap_dns: Vec<std::net::IpAddr>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
+    #[serde(default = "legacy_backend")]
+    pub backend: Backend,
     pub vpn_user: String,
     pub vpn_server: String,
     pub vpn_useragent: String,
     pub allowed_targets: Vec<String>,
     pub project: String,
     pub keepalive: Keepalive,
+    pub native: Native,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,12 +48,14 @@ pub struct Keepalive {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            backend: Backend::Native,
             vpn_user: String::new(),
             vpn_server: "vpn2fa.hku.hk".into(),
             vpn_useragent: "AnyConnect".into(),
             allowed_targets: vec!["any".into()],
             project: "hku-ssh-gateway".into(),
             keepalive: Keepalive::default(),
+            native: Native::default(),
         }
     }
 }
@@ -97,6 +122,7 @@ impl Config {
         );
         ensure!(
             !self.project.is_empty()
+                && self.project.len() <= 64
                 && self.project.as_bytes()[0].is_ascii_alphanumeric()
                 && self
                     .project
@@ -164,6 +190,12 @@ mod tests {
         assert_eq!(decoded.dotenv().unwrap(), config.dotenv().unwrap());
         assert_eq!(decoded.allowed_targets, ["any"]);
         assert!(!encoded.to_lowercase().contains("tailscale"));
+    }
+    #[test]
+    fn old_configuration_keeps_docker_but_new_configuration_is_native() {
+        assert_eq!(Config::default().backend, Backend::Native);
+        let old: Config = toml::from_str("vpn_user = 'test@example.invalid'\n").unwrap();
+        assert_eq!(old.backend, Backend::Docker);
     }
     #[test]
     fn rejects_config_and_shell_injection() {

@@ -12,7 +12,7 @@ cleanup() {
     rm -rf -- "$TMP"
 }
 trap cleanup EXIT
-"$BIN" --state-dir "$TMP/state" setup --user test@example.invalid --project "$PROJECT" --no-keepalive
+"$BIN" --state-dir "$TMP/state" setup --backend docker --user test@example.invalid --project "$PROJECT" --no-keepalive
 id=$(compose ps -q vpn)
 cc -static -O2 -Wall -Wextra -Werror "$ROOT/tests/mock-openconnect.c" -o "$TMP/openconnect"
 docker cp "$TMP/openconnect" "$id:/usr/sbin/openconnect"

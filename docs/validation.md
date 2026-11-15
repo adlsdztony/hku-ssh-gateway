@@ -1,5 +1,19 @@
 # Validation scope
 
+## Native Linux backend
+
+Privileged integration runs on a dedicated Ubuntu CI VM using real systemd, netns, veth and firewall rules. A mock OpenConnect reads hidden password/MFA fixture input from its terminal and establishes a simulated tunnel using the real routing hook. Checks cover owner-only control, cross-user denial, automatic return with restored terminal settings, a persistent VPN process, live bidirectional binary forwarding without newline or EOF, blocked ordinary-network fallback, keepalive, DNS resolution through the tunnel, unchanged host default routing and resolver, recreation of volatile runtime directories, route restoration and re-login after disconnection, and repeatable scoped cleanup. Installation must not report executable-write conflicts or namespace bind warnings. No school credentials or live VPN sessions are used in CI.
+
+Linux amd64/arm64, Windows x64 and macOS Intel/Apple Silicon builds are covered. Windows/macOS reject gateway management and preserve remote SSH/proxy client operation without Docker. Old TOML remains Docker-backed. A live native deployment using embedded OpenConnect 9.21 completed HKU password/MFA authentication, campus DNS resolution, trusted destination SSH key exchange and successful keepalive. The Windows client also completed both SSH transport hops and reached destination authentication. Destination password authentication was left to the user, without collecting credentials. A prior banner-only check exposed a missing binary-stream test; the proxy now uses raw file descriptors and immediate relay writes, with a regression check that keeps the connection open across several binary exchanges.
+
+Linux bundled builds repeat the integration suite without host OpenConnect or vpnc-script. They first run the real private musl/GnuTLS client against local TLS fixtures to verify trusted-CA acceptance and untrusted-certificate rejection. An altered runtime-cache file must fail verification before the existing service stops. Both architectures retain the persistent binary-stream tests after substituting a private, matching-musl authentication fixture. CI never stores or requests real HKU credentials. Live bundled HKU MFA was verified separately from these simulated tests.
+
+A real bundled OpenConnect client also follows a local HTTPS 302 redirect to a hostname whose A/AAAA replies are deliberately delayed by 1.5 seconds. This reproduces the former one-second, single-attempt resolver failure and verifies that the actual namespace resolver configuration allows the redirected HTTPS endpoint to be reached. The test restores its namespace-only resolver file and never submits real VPN credentials.
+
+The Cisco tunnel-authentication fixture generates an ephemeral STRAP key and synthetic cookie locally, then verifies the actual client's CONNECT signature against TLS 1.2 tls-unique and TLS 1.3 tls-exporter channel bindings. Unpatched 9.12 passes TLS 1.2 but reproduces HTTP 401 and an invalid signature with TLS 1.3. The bundle therefore uses signed upstream 9.21 source, which includes the official compatibility fix. The fixture does not inspect real authentication traffic, issue a tunnel address, or change production login handling.
+
+## Existing Docker implementation
+
 The original container implementation was tested with real HKU password/MFA, CSTP/DTLS, persistent tmux detachment, internal DNS and a complete destination SSH handshake from a Windows client. The destination host key matched the existing known_hosts record. Destination shell login was not verified because the test key was not authorized there.
 
 The live session advertised a 1800-second idle timeout and 604800-second maximum duration. Repeated 300-second TCP probes succeeded without restarting the authenticated VPN. This verifies actual probe traffic, not every possible future gateway policy or seven days of operation.
