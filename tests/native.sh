@@ -100,6 +100,7 @@ PY
         --non-inter --user fixture "https://$host_ip:$tls_port" </dev/null > "$TMP/tls-trust.log" 2>&1 || true
     grep -q 'Connected to HTTPS' "$TMP/tls-trust.log" || { cat "$TMP/tls-trust.log"; exit 1; }
     echo 'PASS: embedded OpenConnect and TLS trust/rejection without host VPN packages.'
+    sudo ip netns exec "$namespace" python3 "$ROOT/tests/dns-redirect.py" "$runtime"
     main_pid=$(systemctl show "hku-native-$id.service" --property MainPID --value)
     sudo cp "$runtime/ca-certificates.crt" "$TMP/original-ca.crt"
     sudo python3 -c 'import sys; f=open(sys.argv[1],"r+b"); f.write(b"!"); f.close()' "$runtime/ca-certificates.crt"

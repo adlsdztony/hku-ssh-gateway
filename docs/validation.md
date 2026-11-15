@@ -8,6 +8,8 @@ Linux amd64/arm64, Windows x64 and macOS Intel/Apple Silicon builds are covered.
 
 Linux bundled builds repeat the integration suite without host OpenConnect or vpnc-script. They first run the real private musl/GnuTLS client against local TLS fixtures to verify trusted-CA acceptance and untrusted-certificate rejection. An altered runtime-cache file must fail verification before the existing service stops. Both architectures retain the persistent binary-stream tests after substituting a private, matching-musl authentication fixture. CI never stores or requests real HKU credentials. Bundled HKU MFA must be verified separately from the previously working host-package deployment.
 
+A real bundled OpenConnect client also follows a local HTTPS 302 redirect to a hostname whose A/AAAA replies are deliberately delayed by 1.5 seconds. This reproduces the former one-second, single-attempt resolver failure and verifies that the actual namespace resolver configuration allows the redirected HTTPS endpoint to be reached. The test restores its namespace-only resolver file and never submits real VPN credentials.
+
 ## Existing Docker implementation
 
 The original container implementation was tested with real HKU password/MFA, CSTP/DTLS, persistent tmux detachment, internal DNS and a complete destination SSH handshake from a Windows client. The destination host key matched the existing known_hosts record. Destination shell login was not verified because the test key was not authorized there.

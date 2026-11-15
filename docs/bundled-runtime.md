@@ -35,6 +35,11 @@ certificate verification. Update the CLI and run `hku up` to deploy updated
 runtime libraries and fallback certificates; this restart requires VPN MFA again.
 The CLI does not overwrite the host's VPN client, certificates or shared libraries.
 
+Namespace DNS uses a five-second timeout with two attempts, both before login
+and after VPN DNS is applied. Uncached redirect hosts must not fail merely
+because a valid DNS reply takes longer than one second. No gateway addresses
+or public DNS providers are hardcoded.
+
 ## Source builds
 
 To embed the runtime when compiling on Linux:

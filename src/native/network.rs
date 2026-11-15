@@ -7,6 +7,9 @@ use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+// Allow uncached gateway redirects and ordinary upstream DNS retries.
+const RESOLVER_OPTIONS: &str = "options timeout:5 attempts:2\n";
+
 #[derive(Debug)]
 pub struct Network {
     pub namespace: String,
@@ -385,7 +388,7 @@ fn bootstrap_dns(d: &Deployment) -> Result<String> {
         .iter()
         .map(|ip| format!("nameserver {ip}\n"))
         .collect::<String>()
-        + "options timeout:1 attempts:1\n")
+        + RESOLVER_OPTIONS)
 }
 
 pub fn hook(d: &Deployment) -> Result<i32> {
@@ -404,7 +407,7 @@ pub fn hook(d: &Deployment) -> Result<i32> {
             dns.iter()
                 .map(|ip| format!("nameserver {ip}\n"))
                 .collect::<String>()
-                + "options timeout:1 attempts:1\n",
+                + RESOLVER_OPTIONS,
         )
     } else if reason == "disconnect" {
         Some(fs::read_to_string(
